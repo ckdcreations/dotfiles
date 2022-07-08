@@ -1,1 +1,0 @@
-/home/beatleboy07/dotfiles/vimrc
