@@ -1,0 +1,104 @@
+#!/bin/sh
+
+set -eu
+
+DOTFILES_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+BACKUP_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles-backups"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+BACKUP_DIR="$BACKUP_ROOT/$TIMESTAMP"
+INSTALL_BREW=0
+
+for arg in "$@"; do
+    case "$arg" in
+        --brew)
+            INSTALL_BREW=1
+            ;;
+        *)
+            printf 'Unknown option: %s\n' "$arg" >&2
+            exit 1
+            ;;
+    esac
+done
+
+backup_path() {
+    target=$1
+    if [ ! -e "$target" ] && [ ! -L "$target" ]; then
+        return 0
+    fi
+
+    relative=${target#"$HOME"/}
+    backup_target="$BACKUP_DIR/$relative"
+    mkdir -p "$(dirname -- "$backup_target")"
+    mv "$target" "$backup_target"
+    printf 'Backed up %s -> %s\n' "$target" "$backup_target"
+}
+
+link_file() {
+    source_file=$1
+    target_file=$2
+
+    if [ -L "$target_file" ] && [ "$(readlink "$target_file")" = "$source_file" ]; then
+        printf 'Already linked: %s\n' "$target_file"
+        return 0
+    fi
+
+    if [ -e "$target_file" ] || [ -L "$target_file" ]; then
+        mkdir -p "$BACKUP_DIR"
+        backup_path "$target_file"
+    fi
+
+    mkdir -p "$(dirname -- "$target_file")"
+    ln -s "$source_file" "$target_file"
+    printf 'Linked %s -> %s\n' "$target_file" "$source_file"
+}
+
+setup_gitconfig() {
+    if [ -f "$HOME/.gitconfig" ] && [ ! -f "$HOME/.gitconfig.local" ] && [ ! -L "$HOME/.gitconfig" ]; then
+        mv "$HOME/.gitconfig" "$HOME/.gitconfig.local"
+        printf 'Moved existing ~/.gitconfig to ~/.gitconfig.local\n'
+    elif [ -f "$HOME/.gitconfig" ] && [ ! -L "$HOME/.gitconfig" ]; then
+        mkdir -p "$BACKUP_DIR"
+        backup_path "$HOME/.gitconfig"
+    fi
+
+    link_file "$DOTFILES_DIR/git/gitconfig" "$HOME/.gitconfig"
+    link_file "$DOTFILES_DIR/git/gitignore_global" "$HOME/.gitignore_global"
+
+    if [ ! -f "$HOME/.gitconfig.local" ]; then
+        cp "$DOTFILES_DIR/git/gitconfig.local.example" "$HOME/.gitconfig.local"
+        printf 'Created ~/.gitconfig.local from example\n'
+    fi
+}
+
+setup_shell() {
+    link_file "$DOTFILES_DIR/shell/zprofile" "$HOME/.zprofile"
+    link_file "$DOTFILES_DIR/shell/zshrc" "$HOME/.zshrc"
+
+    if [ ! -f "$HOME/.zshrc.local" ]; then
+        cp "$DOTFILES_DIR/shell/zshrc.local.example" "$HOME/.zshrc.local"
+        printf 'Created ~/.zshrc.local from example\n'
+    fi
+}
+
+install_brew_bundle() {
+    if [ "$(uname -s)" != "Darwin" ]; then
+        printf 'Skipping Brewfile install: not macOS\n'
+        return 0
+    fi
+
+    if command -v brew >/dev/null 2>&1; then
+        brew bundle --file "$DOTFILES_DIR/Brewfile"
+        return 0
+    fi
+
+    printf 'Skipping Brewfile install: Homebrew not found\n'
+}
+
+setup_gitconfig
+setup_shell
+
+if [ "$INSTALL_BREW" -eq 1 ]; then
+    install_brew_bundle
+fi
+
+printf 'Bootstrap complete. Open a new shell to load changes.\n'

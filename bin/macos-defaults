@@ -1,0 +1,20 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$(uname -s)" != "Darwin" ]; then
+    printf 'This script is only for macOS.\n' >&2
+    exit 1
+fi
+
+defaults write NSGlobalDomain AppleShowAllExtensions -bool true
+defaults write NSGlobalDomain KeyRepeat -int 2
+defaults write NSGlobalDomain InitialKeyRepeat -int 15
+defaults write com.apple.finder ShowPathbar -bool true
+defaults write com.apple.finder FXPreferredViewStyle -string Nlsv
+defaults write com.apple.dock autohide -bool true
+
+killall Finder >/dev/null 2>&1 || true
+killall Dock >/dev/null 2>&1 || true
+
+printf 'Applied macOS defaults. Some changes may require logout or restart.\n'

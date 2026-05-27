@@ -1,0 +1,13 @@
+[core]
+	editor = code --wait
+	excludesfile = ~/.gitignore_global
+[fetch]
+	prune = true
+[init]
+	defaultBranch = main
+[pull]
+	rebase = false
+[push]
+	autoSetupRemote = true
+[include]
+	path = ~/.gitconfig.local

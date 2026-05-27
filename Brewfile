@@ -1,0 +1,10 @@
+tap "homebrew/bundle"
+
+brew "bat"
+brew "eza"
+brew "fd"
+brew "fzf"
+brew "git"
+brew "jq"
+brew "ripgrep"
+brew "tree"
