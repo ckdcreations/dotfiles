@@ -1,0 +1,177 @@
+#!/bin/sh
+
+set -eu
+
+HOST=github.com
+PROTOCOL=https
+FIX_CURRENT_REMOTE=1
+
+usage() {
+    cat <<'EOF'
+Usage: ./bin/github-auth-setup [options]
+
+Options:
+  --host <host>           GitHub host (default: github.com)
+  --protocol <https|ssh>  Git protocol to use (default: https)
+  --no-fix-remote         Do not rewrite current repo origin URL
+  -h, --help              Show this help message
+
+What this does:
+  1) Ensures gh is installed.
+  2) Ensures you are authenticated with gh for the host.
+  3) Sets gh git_protocol for the host.
+  4) Runs gh auth setup-git so git can use gh credentials.
+  5) Optionally rewrites current repo origin URL to match protocol.
+EOF
+}
+
+log() {
+    printf '%s\n' "$1"
+}
+
+require_gh() {
+    if ! command -v gh >/dev/null 2>&1; then
+        log "GitHub CLI (gh) is not installed. Install it first."
+        exit 1
+    fi
+}
+
+ensure_auth() {
+    if gh auth status --hostname "$HOST" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    log "No active gh auth for $HOST. Starting browser login flow..."
+    gh auth login --hostname "$HOST" --web --git-protocol "$PROTOCOL"
+}
+
+set_protocol() {
+    gh config set git_protocol "$PROTOCOL" --host "$HOST"
+    gh auth setup-git --hostname "$HOST"
+}
+
+convert_to_https() {
+    current_url=$1
+
+    case "$current_url" in
+        git@${HOST}:*)
+            repo_path=${current_url#git@${HOST}:}
+            printf 'https://%s/%s\n' "$HOST" "$repo_path"
+            ;;
+        ssh://git@${HOST}/*)
+            repo_path=${current_url#ssh://git@${HOST}/}
+            printf 'https://%s/%s\n' "$HOST" "$repo_path"
+            ;;
+        https://$HOST/*)
+            printf '%s\n' "$current_url"
+            ;;
+        *)
+            printf '%s\n' "$current_url"
+            ;;
+    esac
+}
+
+convert_to_ssh() {
+    current_url=$1
+
+    case "$current_url" in
+        https://$HOST/*)
+            repo_path=${current_url#https://$HOST/}
+            printf 'git@%s:%s\n' "$HOST" "$repo_path"
+            ;;
+        git@${HOST}:*|ssh://git@${HOST}/*)
+            printf '%s\n' "$current_url"
+            ;;
+        *)
+            printf '%s\n' "$current_url"
+            ;;
+    esac
+}
+
+fix_current_remote() {
+    if [ "$FIX_CURRENT_REMOTE" -ne 1 ]; then
+        return 0
+    fi
+
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! git remote get-url origin >/dev/null 2>&1; then
+        return 0
+    fi
+
+    current_url=$(git remote get-url origin)
+
+    case "$PROTOCOL" in
+        https)
+            new_url=$(convert_to_https "$current_url")
+            ;;
+        ssh)
+            new_url=$(convert_to_ssh "$current_url")
+            ;;
+        *)
+            log "Unsupported protocol: $PROTOCOL"
+            exit 1
+            ;;
+    esac
+
+    if [ "$new_url" = "$current_url" ]; then
+        log "Origin remote already matches desired protocol or is non-$HOST: $current_url"
+        return 0
+    fi
+
+    git remote set-url origin "$new_url"
+    log "Updated origin remote: $current_url -> $new_url"
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --host)
+            if [ "$#" -lt 2 ]; then
+                log "Missing value for --host"
+                usage
+                exit 1
+            fi
+            HOST=$2
+            shift 2
+            ;;
+        --protocol)
+            if [ "$#" -lt 2 ]; then
+                log "Missing value for --protocol"
+                usage
+                exit 1
+            fi
+            PROTOCOL=$2
+            shift 2
+            ;;
+        --no-fix-remote)
+            FIX_CURRENT_REMOTE=0
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            log "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+if [ "$PROTOCOL" != "https" ] && [ "$PROTOCOL" != "ssh" ]; then
+    log "Invalid protocol: $PROTOCOL"
+    usage
+    exit 1
+fi
+
+require_gh
+ensure_auth
+set_protocol
+fix_current_remote
+
+log ""
+log "GitHub auth setup complete for $HOST using $PROTOCOL."
+log "Tip: verify with 'gh auth status' and 'git remote -v'."

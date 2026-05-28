@@ -192,3 +192,60 @@ Examples:
 ./bin/export-local-config --output "$HOME/migration-bundle" --force
 ./bin/export-local-config --no-ssh --no-archive --force
 ```
+
+## github-auth-setup
+
+Path: `bin/github-auth-setup`
+
+Purpose:
+- Sets up GitHub CLI authentication and git integration for a chosen protocol.
+- Fixes the common mismatch where git remote uses SSH but auth is configured for HTTPS (or vice versa).
+- Optionally rewrites the current repository `origin` URL to the selected protocol.
+
+Usage:
+
+```sh
+./bin/github-auth-setup [options]
+```
+
+Options:
+- `--host <host>`: GitHub host (default `github.com`).
+- `--protocol <https|ssh>`: Git protocol to use (default `https`).
+- `--no-fix-remote`: Keep current `origin` URL unchanged.
+
+Examples:
+
+```sh
+./bin/github-auth-setup --protocol https
+./bin/github-auth-setup --protocol ssh
+```
+
+## github-create-repo
+
+Path: `bin/github-create-repo`
+
+Purpose:
+- Creates a GitHub repository from a local git repository.
+- Sets the remote and optionally pushes in one command.
+
+Usage:
+
+```sh
+./bin/github-create-repo [options] <repo-name>
+```
+
+Options:
+- `--owner <name>`: Owner or organization (default authenticated user).
+- `--public`: Create public repository.
+- `--private`: Create private repository (default).
+- `--source <dir>`: Source git repository directory (default `.`).
+- `--remote <name>`: Remote name (default `origin`).
+- `--no-push`: Create remote without pushing local branch.
+- `--host <host>`: GitHub host (default `github.com`).
+
+Examples:
+
+```sh
+./bin/github-create-repo my-new-repo
+./bin/github-create-repo --public --owner ckdcreations notes
+```

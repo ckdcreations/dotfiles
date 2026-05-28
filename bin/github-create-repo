@@ -1,0 +1,168 @@
+#!/bin/sh
+
+set -eu
+
+OWNER=
+NAME=
+VISIBILITY=private
+SOURCE_DIR=.
+REMOTE_NAME=origin
+PUSH=1
+HOST=github.com
+
+usage() {
+    cat <<'EOF'
+Usage: ./bin/github-create-repo [options] <repo-name>
+
+Options:
+  --owner <name>       GitHub owner/org (default: gh authenticated user)
+  --public             Create a public repository
+  --private            Create a private repository (default)
+  --source <dir>       Source directory containing git repo (default: .)
+  --remote <name>      Remote name to configure (default: origin)
+  --no-push            Do not push local commits after creating repo
+  --host <host>        GitHub host (default: github.com)
+  -h, --help           Show this help message
+
+Examples:
+  ./bin/github-create-repo my-new-repo
+  ./bin/github-create-repo --public --owner ckdcreations notes
+  ./bin/github-create-repo --source "$HOME/projects/api" api-service
+EOF
+}
+
+log() {
+    printf '%s\n' "$1"
+}
+
+require_gh() {
+    if ! command -v gh >/dev/null 2>&1; then
+        log "GitHub CLI (gh) is not installed."
+        exit 1
+    fi
+}
+
+ensure_auth() {
+    if gh auth status --hostname "$HOST" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    log "Not authenticated to $HOST. Run ./bin/github-auth-setup first."
+    exit 1
+}
+
+resolve_owner() {
+    if [ -n "$OWNER" ]; then
+        return 0
+    fi
+
+    OWNER=$(gh api user --jq .login)
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --owner)
+            if [ "$#" -lt 2 ]; then
+                log "Missing value for --owner"
+                usage
+                exit 1
+            fi
+            OWNER=$2
+            shift 2
+            ;;
+        --public)
+            VISIBILITY=public
+            shift
+            ;;
+        --private)
+            VISIBILITY=private
+            shift
+            ;;
+        --source)
+            if [ "$#" -lt 2 ]; then
+                log "Missing value for --source"
+                usage
+                exit 1
+            fi
+            SOURCE_DIR=$2
+            shift 2
+            ;;
+        --remote)
+            if [ "$#" -lt 2 ]; then
+                log "Missing value for --remote"
+                usage
+                exit 1
+            fi
+            REMOTE_NAME=$2
+            shift 2
+            ;;
+        --no-push)
+            PUSH=0
+            shift
+            ;;
+        --host)
+            if [ "$#" -lt 2 ]; then
+                log "Missing value for --host"
+                usage
+                exit 1
+            fi
+            HOST=$2
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --*)
+            log "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+        *)
+            if [ -n "$NAME" ]; then
+                log "Only one repository name can be provided."
+                usage
+                exit 1
+            fi
+            NAME=$1
+            shift
+            ;;
+    esac
+done
+
+if [ -z "$NAME" ]; then
+    usage
+    exit 1
+fi
+
+require_gh
+ensure_auth
+resolve_owner
+
+if [ ! -d "$SOURCE_DIR" ]; then
+    log "Source directory not found: $SOURCE_DIR"
+    exit 1
+fi
+
+cd "$SOURCE_DIR"
+
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    log "Source directory is not a git repository: $SOURCE_DIR"
+    exit 1
+fi
+
+FULL_NAME="$OWNER/$NAME"
+
+CREATE_ARGS="--$VISIBILITY --source . --remote $REMOTE_NAME"
+if [ "$PUSH" -eq 1 ]; then
+    CREATE_ARGS="$CREATE_ARGS --push"
+fi
+
+# shellcheck disable=SC2086
+gh repo create "$FULL_NAME" $CREATE_ARGS --hostname "$HOST"
+
+log ""
+log "Repository created: $FULL_NAME"
+if [ "$PUSH" -eq 1 ]; then
+    log "Local branch pushed and remote '$REMOTE_NAME' configured."
+fi

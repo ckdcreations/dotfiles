@@ -12,6 +12,8 @@ Portable shell, git, and machine setup for macOS and other UNIX-like systems.
 - `bin/update-system` to update common package managers
 - `bin/macos-defaults` for optional macOS preferences
 - `bin/remoteConnect` to set up passwordless SSH host aliases
+- `bin/github-auth-setup` to configure GitHub CLI auth and git protocol
+- `bin/github-create-repo` to create and publish repos from local git
 
 Script details are documented in `bin/README.md`.
 
