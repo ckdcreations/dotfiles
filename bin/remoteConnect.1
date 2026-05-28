@@ -1,0 +1,106 @@
+.TH REMOTECONNECT 1 "May 2026" "dotfiles" "User Commands"
+.SH NAME
+remoteConnect \- interactive SSH bootstrap and managed host alias workflow
+.SH SYNOPSIS
+.B remoteConnect
+.RI [ new | list | edit | delete | log | show ]
+.br
+.B remoteConnect
+help
+.SH DESCRIPTION
+.B remoteConnect
+creates and maintains SSH host entries in
+.I ~/.ssh/config,
+installs public keys for passwordless login, and optionally creates shell aliases in
+.I ~/.zshrc.local.
+.PP
+It supports interactive setup for new hosts and management commands for listing, editing, deleting, and viewing logs for remoteConnect-managed entries.
+.SH COMMANDS
+.TP
+.B new
+Runs interactive setup for a new managed host alias.
+Prompts for server label, SSH alias, local host (optional), secondary remote/VPN host (optional), remote user, port, optional gateway alias, and key path.
+.TP
+.B list
+Lists remoteConnect-managed aliases.
+Use
+.B list --commands
+for resolved command details, route data, and shell alias status.
+.TP
+.B edit
+Edits an existing managed alias in place.
+Supports:
+.B remoteConnect edit
+or
+.B remoteConnect edit ALIAS.
+.TP
+.B delete
+Deletes a managed alias and its matching remoteConnect-created shell alias.
+.TP
+.B log
+Shows log entries.
+Examples:
+.B remoteConnect log
+,
+.B remoteConnect log -t 100
+,
+.B remoteConnect log 100
+.TP
+.B show
+Alias for
+.B log.
+.TP
+.B help
+Shows usage help.
+.SH FILES
+.TP
+.I ~/.ssh/config
+Managed host entries are appended with marker lines:
+.br
+# Server: SERVER_NAME
+.TP
+.I ~/.zshrc.local
+Optional shell alias blocks are appended:
+.br
+# Created by remoteConnect
+.br
+alias ALIAS_NAME="ssh HOST_ALIAS"
+.TP
+.I ${XDG_STATE_HOME:-~/.local/state}/remoteConnect/remoteConnect.log
+Persistent operational log.
+.TP
+.I dotfiles/bin/ssh-select-host
+Helper used for dynamic host preference and reachability checks.
+.SH ROUTING
+Supports local-only, secondary-only, and local+secondary (dynamic preference) host selection.
+.PP
+When a gateway alias is provided, managed SSH entries include
+.B ProxyJump
+and bootstrap key installation uses the same route.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Operation failed (validation, network, auth, or update error).
+.TP
+.B 2
+Usage error (unknown command or missing required argument).
+.SH EXAMPLES
+.B remoteConnect new
+.br
+.B remoteConnect list --commands
+.br
+.B remoteConnect edit proxmox
+.br
+.B remoteConnect delete
+.br
+.B remoteConnect log -t 75
+.SH SECURITY
+Sets secure SSH directory and config permissions, validates alias names, avoids overwriting existing aliases on create, and cleans up keys generated during failed setup.
+.SH SEE ALSO
+.BR ssh (1),
+.BR ssh-config (5),
+.BR ssh-copy-id (1),
+.BR ssh-keygen (1)

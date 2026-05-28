@@ -167,6 +167,10 @@ Notes:
 
 Path: `bin/remoteConnect`
 
+Manual page:
+- See `bin/remoteConnect.md` for full man-style documentation.
+- See `bin/remoteConnect.1` for a man-compatible roff page.
+
 Purpose:
 - Interactive setup for passwordless SSH login.
 - Creates an SSH host alias in `~/.ssh/config`.
@@ -191,9 +195,10 @@ Prompt flow:
 - Server name (human-friendly label)
 - SSH host alias (name used with `ssh <alias>`)
 - Local network host (optional)
-- Meshnet host/IP (optional)
+- Secondary remote/VPN host IP (optional)
 - Remote username
 - SSH port (default `22`)
+- Optional mesh gateway alias (for ProxyJump routing)
 - Private key path (default `~/.ssh/id_ed25519_<alias>`)
 - Optional shell alias command name
 

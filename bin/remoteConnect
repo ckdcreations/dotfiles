@@ -10,6 +10,7 @@ SELECT_HOST_HELPER="$SCRIPT_DIR/ssh-select-host"
 STATE_HOME=${XDG_STATE_HOME:-"$HOME/.local/state"}
 LOG_FILE=${REMOTE_CONNECT_LOG:-"$STATE_HOME/remoteConnect/remoteConnect.log"}
 BOOTSTRAP_SSH_OPTS="-o ConnectTimeout=5 -o ConnectionAttempts=1 -o BatchMode=no -o PubkeyAuthentication=no -o PreferredAuthentications=keyboard-interactive,password"
+TAB_CHAR=$(printf '\t')
 
 usage() {
     cat <<'EOF'
@@ -91,6 +92,24 @@ prompt_with_default() {
     out_var=$3
 
     printf '%s [%s]: ' "$prompt_text" "$default_value"
+    IFS= read -r value
+    if [ -z "$value" ]; then
+        value=$default_value
+    fi
+    eval "$out_var=\$value"
+}
+
+prompt_optional_with_default() {
+    prompt_text=$1
+    default_value=$2
+    out_var=$3
+
+    if [ -n "$default_value" ]; then
+        printf '%s [%s]: ' "$prompt_text" "$default_value"
+    else
+        printf '%s: ' "$prompt_text"
+    fi
+
     IFS= read -r value
     if [ -z "$value" ]; then
         value=$default_value
@@ -185,10 +204,10 @@ list_generated_aliases() {
 
     if [ -f "$CONFIG_FILE" ]; then
         printf 'remoteConnect SSH aliases in %s\n' "$CONFIG_FILE"
-        while IFS='\t' read -r server_name alias_name; do
+        while IFS="$TAB_CHAR" read -r server_name alias_name; do
             [ -n "$alias_name" ] || continue
             found=1
-            printf '- %s -> %s' "$alias_name" "$server_name"
+            printf -- '- %s -> %s' "$alias_name" "$server_name"
             if generated_aliases_have_shell_alias "$alias_name"; then
                 printf ' (shell alias present)'
             fi
@@ -215,7 +234,7 @@ load_alias_details() {
 
     details=$(awk -v target_alias="$target_alias" '
         function print_result() {
-            print server "\t" alias "\t" base_host "\t" user "\t" port "\t" identity "\t" local_host "\t" mesh_host
+            print server "\t" alias "\t" base_host "\t" user "\t" port "\t" identity "\t" local_host "\t" mesh_host "\t" gateway
         }
 
         /^# Server: / {
@@ -234,6 +253,7 @@ load_alias_details() {
             identity=""
             local_host=""
             mesh_host=""
+            gateway=""
             expect=""
             next
         }
@@ -278,6 +298,11 @@ load_alias_details() {
             next
         }
 
+        in_target == 1 && /^[[:space:]]+ProxyJump[[:space:]]+/ {
+            gateway=$2
+            next
+        }
+
         in_target == 1 && /^Match host / {
             if (index($0, " local ") > 0) {
                 expect="local"
@@ -298,7 +323,7 @@ load_alias_details() {
         return 1
     fi
 
-    IFS='\t' read -r ALIAS_SERVER_NAME ALIAS_NAME ALIAS_BASE_HOST ALIAS_USER ALIAS_PORT ALIAS_IDENTITY ALIAS_LOCAL_HOST ALIAS_MESH_HOST <<EOF
+    IFS="$TAB_CHAR" read -r ALIAS_SERVER_NAME ALIAS_NAME ALIAS_BASE_HOST ALIAS_USER ALIAS_PORT ALIAS_IDENTITY ALIAS_LOCAL_HOST ALIAS_MESH_HOST ALIAS_GATEWAY <<EOF
 $details
 EOF
 
@@ -326,6 +351,10 @@ show_alias_commands() {
         printf '  hosts: local=%s\n' "$ALIAS_LOCAL_HOST"
     else
         printf '  hosts: mesh=%s\n' "$ALIAS_MESH_HOST"
+    fi
+
+    if [ -n "$ALIAS_GATEWAY" ]; then
+        printf '  route: ProxyJump via %s\n' "$ALIAS_GATEWAY"
     fi
 
     if generated_aliases_have_shell_alias "$alias_name"; then
@@ -453,24 +482,43 @@ install_public_key() {
     remote_user=$2
     host_name=$3
     port=$4
+    gateway_alias=${5:-}
 
     if command -v ssh-copy-id >/dev/null 2>&1; then
         printf 'Using ssh-copy-id. Enter the remote password at the SSH prompt when requested.\n'
-        ssh-copy-id \
-            $BOOTSTRAP_SSH_OPTS \
-            -i "$pub_key_file" \
-            -p "$port" \
-            "$remote_user@$host_name"
+        if [ -n "$gateway_alias" ]; then
+            ssh-copy-id \
+                $BOOTSTRAP_SSH_OPTS \
+                -o "ProxyJump=$gateway_alias" \
+                -i "$pub_key_file" \
+                -p "$port" \
+                "$remote_user@$host_name"
+        else
+            ssh-copy-id \
+                $BOOTSTRAP_SSH_OPTS \
+                -i "$pub_key_file" \
+                -p "$port" \
+                "$remote_user@$host_name"
+        fi
         return 0
     fi
 
     printf 'ssh-copy-id not found. Falling back to manual key install over SSH.\n'
     printf 'Enter the remote password at the SSH prompt when requested.\n'
-    cat "$pub_key_file" | ssh \
-        $BOOTSTRAP_SSH_OPTS \
-        -p "$port" \
-        "$remote_user@$host_name" \
-        'umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys; cat >> ~/.ssh/authorized_keys'
+    if [ -n "$gateway_alias" ]; then
+        cat "$pub_key_file" | ssh \
+            $BOOTSTRAP_SSH_OPTS \
+            -o "ProxyJump=$gateway_alias" \
+            -p "$port" \
+            "$remote_user@$host_name" \
+            'umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys; cat >> ~/.ssh/authorized_keys'
+    else
+        cat "$pub_key_file" | ssh \
+            $BOOTSTRAP_SSH_OPTS \
+            -p "$port" \
+            "$remote_user@$host_name" \
+            'umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys; cat >> ~/.ssh/authorized_keys'
+    fi
 }
 
 cleanup_failed_setup() {
@@ -493,6 +541,7 @@ create_ssh_host_entry() {
     remote_user=$5
     port=$6
     key_file=$7
+    gateway_alias=${8:-}
 
     default_host=$local_host
     if [ -z "$default_host" ]; then
@@ -511,6 +560,9 @@ create_ssh_host_entry() {
         printf '    IdentityFile %s\n' "$key_file"
         printf '    IdentitiesOnly yes\n'
         printf '    HostKeyAlias %s\n' "$alias_name"
+        if [ -n "$gateway_alias" ]; then
+            printf '    ProxyJump %s\n' "$gateway_alias"
+        fi
 
         if [ -n "$local_host" ] && [ -n "$mesh_host" ]; then
             printf '\nMatch host %s exec %s\n' "$alias_name" "$local_match_cmd"
@@ -554,19 +606,24 @@ edit_generated_alias() {
     prompt_with_default 'Remote username' "$ALIAS_USER" REMOTE_USER
     prompt_with_default 'SSH port' "$ALIAS_PORT" SSH_PORT
     prompt_with_default 'Local private key path' "$ALIAS_IDENTITY" KEY_FILE
+    prompt_optional_with_default 'Mesh gateway alias (optional)' "$ALIAS_GATEWAY" GATEWAY_ALIAS
 
     default_local=$ALIAS_LOCAL_HOST
     default_mesh=$ALIAS_MESH_HOST
-    prompt_with_default 'Local network host (IP or DNS, optional)' "$default_local" LOCAL_HOST
-    prompt_with_default 'Meshnet host/IP (optional)' "$default_mesh" MESH_HOST
+    prompt_optional_with_default 'Local network host (IP or DNS, optional)' "$default_local" LOCAL_HOST
+    prompt_optional_with_default 'Secondary remote/VPN host IP (optional)' "$default_mesh" MESH_HOST
 
     if [ -z "$LOCAL_HOST" ] && [ -z "$MESH_HOST" ]; then
         printf 'At least one host is required.\n'
         exit 1
     fi
 
+    if ! validate_gateway_alias "$GATEWAY_ALIAS" "$existing_alias"; then
+        exit 1
+    fi
+
     remove_config_block_by_alias "$existing_alias"
-    create_ssh_host_entry "$SERVER_NAME" "$existing_alias" "$LOCAL_HOST" "$MESH_HOST" "$REMOTE_USER" "$SSH_PORT" "$KEY_FILE"
+    create_ssh_host_entry "$SERVER_NAME" "$existing_alias" "$LOCAL_HOST" "$MESH_HOST" "$REMOTE_USER" "$SSH_PORT" "$KEY_FILE" "$GATEWAY_ALIAS"
 
     if [ -f "$LOCAL_ALIASES_FILE" ] && grep -Fq "alias $existing_alias=\"ssh $existing_alias\"" "$LOCAL_ALIASES_FILE"; then
         remove_shell_alias "$existing_alias"
@@ -666,14 +723,33 @@ sanitize_for_key_name() {
 collect_hosts() {
     while :; do
         prompt_optional 'Local network host (IP or DNS, optional): ' LOCAL_HOST
-        prompt_optional 'Meshnet host/IP (optional): ' MESH_HOST
+        prompt_optional 'Secondary remote/VPN host IP (optional): ' MESH_HOST
 
         if [ -n "$LOCAL_HOST" ] || [ -n "$MESH_HOST" ]; then
             return 0
         fi
 
-        printf 'Provide at least one host: local or meshnet.\n'
+        printf 'Provide at least one host: local or secondary remote/VPN.\n'
     done
+}
+
+validate_gateway_alias() {
+    gateway_alias=$1
+    target_alias=$2
+
+    [ -n "$gateway_alias" ] || return 0
+
+    if [ "$gateway_alias" = "$target_alias" ]; then
+        printf 'Gateway alias cannot be the same as the target alias.\n'
+        return 1
+    fi
+
+    if ! host_alias_exists "$gateway_alias"; then
+        printf 'Gateway alias "%s" was not found in %s.\n' "$gateway_alias" "$CONFIG_FILE"
+        return 1
+    fi
+
+    return 0
 }
 
 new_setup() {
@@ -705,6 +781,11 @@ new_setup() {
     collect_hosts
     prompt_required 'Remote username: ' REMOTE_USER
     prompt_with_default 'SSH port' '22' SSH_PORT
+    prompt_optional 'Mesh gateway alias (optional): ' GATEWAY_ALIAS
+
+    if ! validate_gateway_alias "$GATEWAY_ALIAS" "$SSH_ALIAS"; then
+        exit 1
+    fi
 
     KEY_BASENAME=$(sanitize_for_key_name "$SSH_ALIAS")
     DEFAULT_KEY_FILE="$SSH_DIR/id_ed25519_$KEY_BASENAME"
@@ -726,17 +807,26 @@ new_setup() {
         log_msg INFO "Created public key during setup: $KEY_FILE.pub"
     fi
 
-    if ! SETUP_HOST=$(select_connection_host "$LOCAL_HOST" "$MESH_HOST" "$SSH_PORT"); then
-        log_msg ERROR "No reachable hosts for alias $SSH_ALIAS on port $SSH_PORT"
-        cleanup_failed_setup
-        printf '\nNeither the local host nor the Meshnet host is reachable over SSH on port %s.\n' "$SSH_PORT"
-        printf 'Check your network connection, the server addresses, or your Meshnet status, then try again.\n'
-        exit 1
+    if [ -n "$GATEWAY_ALIAS" ]; then
+        if [ -n "$MESH_HOST" ]; then
+            SETUP_HOST=$MESH_HOST
+        else
+            SETUP_HOST=$LOCAL_HOST
+        fi
+        log_msg INFO "Gateway route enabled for alias $SSH_ALIAS via $GATEWAY_ALIAS"
+    else
+        if ! SETUP_HOST=$(select_connection_host "$LOCAL_HOST" "$MESH_HOST" "$SSH_PORT"); then
+            log_msg ERROR "No reachable hosts for alias $SSH_ALIAS on port $SSH_PORT"
+            cleanup_failed_setup
+            printf '\nNeither the local host nor the secondary remote host is reachable over SSH on port %s.\n' "$SSH_PORT"
+            printf 'Check your network connection and server addresses, then try again.\n'
+            exit 1
+        fi
     fi
 
     log_msg INFO "Installing key for alias $SSH_ALIAS using setup host $SETUP_HOST"
     printf '\nInstalling public key on remote host via %s.\n' "$SETUP_HOST"
-    if ! install_public_key "$KEY_FILE.pub" "$REMOTE_USER" "$SETUP_HOST" "$SSH_PORT"; then
+    if ! install_public_key "$KEY_FILE.pub" "$REMOTE_USER" "$SETUP_HOST" "$SSH_PORT" "$GATEWAY_ALIAS"; then
         log_msg ERROR "Key installation failed for $REMOTE_USER@$SETUP_HOST:$SSH_PORT"
         cleanup_failed_setup
         printf '\nFailed to install SSH key.\n'
@@ -746,7 +836,7 @@ new_setup() {
         exit 1
     fi
 
-    create_ssh_host_entry "$SERVER_NAME" "$SSH_ALIAS" "$LOCAL_HOST" "$MESH_HOST" "$REMOTE_USER" "$SSH_PORT" "$KEY_FILE"
+    create_ssh_host_entry "$SERVER_NAME" "$SSH_ALIAS" "$LOCAL_HOST" "$MESH_HOST" "$REMOTE_USER" "$SSH_PORT" "$KEY_FILE" "$GATEWAY_ALIAS"
     log_msg INFO "Created SSH config entry for alias $SSH_ALIAS"
 
     printf '\nSSH host alias created.\n'
