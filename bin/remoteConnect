@@ -1,0 +1,221 @@
+#!/bin/sh
+
+set -eu
+
+SSH_DIR=${SSH_DIR:-"$HOME/.ssh"}
+CONFIG_FILE="$SSH_DIR/config"
+LOCAL_ALIASES_FILE="$HOME/.zshrc.local"
+
+ensure_ssh_dir() {
+    mkdir -p "$SSH_DIR"
+    chmod 700 "$SSH_DIR"
+
+    if [ ! -f "$CONFIG_FILE" ]; then
+        touch "$CONFIG_FILE"
+    fi
+    chmod 600 "$CONFIG_FILE"
+}
+
+prompt_required() {
+    prompt_text=$1
+    out_var=$2
+
+    while :; do
+        printf '%s' "$prompt_text"
+        IFS= read -r value
+        if [ -n "$value" ]; then
+            eval "$out_var=\$value"
+            return 0
+        fi
+        printf 'Value is required. Please try again.\n'
+    done
+}
+
+prompt_with_default() {
+    prompt_text=$1
+    default_value=$2
+    out_var=$3
+
+    printf '%s [%s]: ' "$prompt_text" "$default_value"
+    IFS= read -r value
+    if [ -z "$value" ]; then
+        value=$default_value
+    fi
+    eval "$out_var=\$value"
+}
+
+confirm_yes_no() {
+    prompt_text=$1
+
+    while :; do
+        printf '%s [y/n]: ' "$prompt_text"
+        IFS= read -r answer
+        case "$answer" in
+            y|Y|yes|YES)
+                return 0
+                ;;
+            n|N|no|NO)
+                return 1
+                ;;
+            *)
+                printf 'Please answer y or n.\n'
+                ;;
+        esac
+    done
+}
+
+validate_alias_name() {
+    alias_name=$1
+    case "$alias_name" in
+        *[!a-zA-Z0-9._-]*|'')
+            return 1
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
+host_alias_exists() {
+    alias_name=$1
+    grep -Eq "^[[:space:]]*Host[[:space:]]+$alias_name([[:space:]]|$)" "$CONFIG_FILE"
+}
+
+alias_cmd_exists() {
+    alias_name=$1
+    [ -f "$LOCAL_ALIASES_FILE" ] || return 1
+    grep -Eq "^[[:space:]]*alias[[:space:]]+$alias_name=" "$LOCAL_ALIASES_FILE"
+}
+
+install_public_key() {
+    pub_key_file=$1
+    remote_user=$2
+    host_name=$3
+    port=$4
+
+    if command -v ssh-copy-id >/dev/null 2>&1; then
+        ssh-copy-id -i "$pub_key_file" -p "$port" "$remote_user@$host_name"
+        return 0
+    fi
+
+    printf 'ssh-copy-id not found. Falling back to manual key install over SSH.\n'
+    cat "$pub_key_file" | ssh -p "$port" "$remote_user@$host_name" \
+        'umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys; cat >> ~/.ssh/authorized_keys'
+}
+
+create_ssh_host_entry() {
+    alias_name=$1
+    host_name=$2
+    remote_user=$3
+    port=$4
+    key_file=$5
+
+    {
+        printf '\nHost %s\n' "$alias_name"
+        printf '    HostName %s\n' "$host_name"
+        printf '    User %s\n' "$remote_user"
+        printf '    Port %s\n' "$port"
+        printf '    IdentityFile %s\n' "$key_file"
+        printf '    IdentitiesOnly yes\n'
+    } >> "$CONFIG_FILE"
+}
+
+create_shell_alias() {
+    alias_cmd=$1
+    ssh_alias=$2
+
+    if [ ! -f "$LOCAL_ALIASES_FILE" ]; then
+        touch "$LOCAL_ALIASES_FILE"
+    fi
+
+    if alias_cmd_exists "$alias_cmd"; then
+        printf 'Shell alias "%s" already exists in %s. Skipping.\n' "$alias_cmd" "$LOCAL_ALIASES_FILE"
+        return 0
+    fi
+
+    {
+        printf '\n# Created by remoteConnect\n'
+        printf 'alias %s="ssh %s"\n' "$alias_cmd" "$ssh_alias"
+    } >> "$LOCAL_ALIASES_FILE"
+
+    printf 'Added shell alias: %s -> ssh %s\n' "$alias_cmd" "$ssh_alias"
+}
+
+reload_local_aliases_if_possible() {
+    # Only a sourced script can modify the caller shell environment.
+    if (return 0 2>/dev/null); then
+        if [ -f "$LOCAL_ALIASES_FILE" ]; then
+            # shellcheck disable=SC1090
+            . "$LOCAL_ALIASES_FILE"
+            printf 'Reloaded aliases from %s\n' "$LOCAL_ALIASES_FILE"
+        fi
+    else
+        printf 'Run now to load new alias: source ~/.zshrc.local\n'
+    fi
+}
+
+sanitize_for_key_name() {
+    input=$1
+    printf '%s' "$input" | tr -c 'a-zA-Z0-9._-' '_'
+}
+
+ensure_ssh_dir
+
+printf 'Remote SSH passwordless setup\n'
+printf 'This will create an SSH host alias and install your public key on the remote server.\n\n'
+
+while :; do
+    prompt_required 'SSH host alias (example: myserver): ' SSH_ALIAS
+    if validate_alias_name "$SSH_ALIAS"; then
+        break
+    fi
+    printf 'Alias can only include letters, numbers, dot, underscore, and dash.\n'
+done
+
+if host_alias_exists "$SSH_ALIAS"; then
+    printf 'An SSH host alias named "%s" already exists in %s.\n' "$SSH_ALIAS" "$CONFIG_FILE"
+    printf 'Choose a different alias or remove the existing entry first.\n'
+    exit 1
+fi
+
+prompt_required 'Remote host (IP or DNS name): ' HOST_NAME
+prompt_required 'Remote username: ' REMOTE_USER
+prompt_with_default 'SSH port' '22' SSH_PORT
+
+KEY_BASENAME=$(sanitize_for_key_name "$SSH_ALIAS")
+DEFAULT_KEY_FILE="$SSH_DIR/id_ed25519_$KEY_BASENAME"
+prompt_with_default 'Local private key path' "$DEFAULT_KEY_FILE" KEY_FILE
+
+if [ -f "$KEY_FILE" ]; then
+    printf 'Using existing key: %s\n' "$KEY_FILE"
+else
+    prompt_with_default 'Key comment' "$REMOTE_USER@$HOST_NAME" KEY_COMMENT
+    ssh-keygen -t ed25519 -f "$KEY_FILE" -C "$KEY_COMMENT" -N ''
+fi
+
+if [ ! -f "$KEY_FILE.pub" ]; then
+    ssh-keygen -y -f "$KEY_FILE" > "$KEY_FILE.pub"
+fi
+
+printf '\nInstalling public key on remote host. You may be prompted for the remote account password once.\n'
+install_public_key "$KEY_FILE.pub" "$REMOTE_USER" "$HOST_NAME" "$SSH_PORT"
+
+create_ssh_host_entry "$SSH_ALIAS" "$HOST_NAME" "$REMOTE_USER" "$SSH_PORT" "$KEY_FILE"
+
+printf '\nSSH host alias created.\n'
+printf 'Connect with: ssh %s\n' "$SSH_ALIAS"
+
+if confirm_yes_no 'Create a shell alias command for quick connect (alias <name>="ssh <host>")?'; then
+    while :; do
+        prompt_required 'Shell alias command name: ' ALIAS_CMD
+        if validate_alias_name "$ALIAS_CMD"; then
+            break
+        fi
+        printf 'Alias can only include letters, numbers, dot, underscore, and dash.\n'
+    done
+
+    create_shell_alias "$ALIAS_CMD" "$SSH_ALIAS"
+    reload_local_aliases_if_possible
+fi
+
+printf 'Done.\n'

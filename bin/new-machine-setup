@@ -1,0 +1,165 @@
+#!/bin/sh
+
+set -eu
+
+DOTFILES_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+BOOTSTRAP_SCRIPT="$DOTFILES_DIR/bin/bootstrap"
+INSTALL_BREW=0
+APPLY_MACOS_DEFAULTS=0
+RESTORE_DIR=
+FORCE_RESTORE=0
+
+usage() {
+    cat <<'EOF'
+Usage: ./bin/new-machine-setup [options]
+
+Options:
+  --brew                    Run bootstrap with --brew
+  --macos-defaults          Apply macOS defaults after bootstrap
+  --restore-local <dir>     Restore machine-local files from <dir>
+  --force-restore           Overwrite existing local files when restoring
+  -h, --help                Show this help message
+
+Restore directory format:
+  <dir>/gitconfig.local
+  <dir>/zshrc.local
+  <dir>/ssh/   (optional, includes config and keys)
+EOF
+}
+
+log() {
+    printf '%s\n' "$1"
+}
+
+restore_file() {
+    src=$1
+    dst=$2
+
+    if [ ! -e "$src" ]; then
+        return 0
+    fi
+
+    if [ -e "$dst" ] && [ "$FORCE_RESTORE" -ne 1 ]; then
+        log "Skipping existing file: $dst"
+        return 0
+    fi
+
+    mkdir -p "$(dirname -- "$dst")"
+    cp "$src" "$dst"
+    log "Restored file: $dst"
+}
+
+restore_ssh_dir() {
+    src_dir=$1
+    dst_dir=$2
+
+    if [ ! -d "$src_dir" ]; then
+        return 0
+    fi
+
+    mkdir -p "$dst_dir"
+    chmod 700 "$dst_dir"
+
+    # Copy only top-level files in ~/.ssh from backup.
+    for src in "$src_dir"/*; do
+        [ -e "$src" ] || continue
+        base=$(basename -- "$src")
+        dst="$dst_dir/$base"
+
+        if [ -e "$dst" ] && [ "$FORCE_RESTORE" -ne 1 ]; then
+            log "Skipping existing SSH file: $dst"
+            continue
+        fi
+
+        cp -R "$src" "$dst"
+
+        case "$base" in
+            *.pub)
+                chmod 644 "$dst" 2>/dev/null || true
+                ;;
+            *)
+                chmod 600 "$dst" 2>/dev/null || true
+                ;;
+        esac
+
+        log "Restored SSH file: $dst"
+    done
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --brew)
+            INSTALL_BREW=1
+            shift
+            ;;
+        --macos-defaults)
+            APPLY_MACOS_DEFAULTS=1
+            shift
+            ;;
+        --restore-local)
+            if [ "$#" -lt 2 ]; then
+                log "Missing path for --restore-local"
+                usage
+                exit 1
+            fi
+            RESTORE_DIR=$2
+            shift 2
+            ;;
+        --force-restore)
+            FORCE_RESTORE=1
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            log "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+if [ ! -x "$BOOTSTRAP_SCRIPT" ]; then
+    log "Bootstrap script not found or not executable: $BOOTSTRAP_SCRIPT"
+    exit 1
+fi
+
+if [ "$INSTALL_BREW" -eq 1 ]; then
+    "$BOOTSTRAP_SCRIPT" --brew
+else
+    "$BOOTSTRAP_SCRIPT"
+fi
+
+if [ -n "$RESTORE_DIR" ]; then
+    if [ ! -d "$RESTORE_DIR" ]; then
+        log "Restore directory does not exist: $RESTORE_DIR"
+        exit 1
+    fi
+
+    restore_file "$RESTORE_DIR/gitconfig.local" "$HOME/.gitconfig.local"
+    restore_file "$RESTORE_DIR/zshrc.local" "$HOME/.zshrc.local"
+    restore_ssh_dir "$RESTORE_DIR/ssh" "$HOME/.ssh"
+fi
+
+if [ "$APPLY_MACOS_DEFAULTS" -eq 1 ]; then
+    if [ "$(uname -s)" = "Darwin" ]; then
+        "$DOTFILES_DIR/bin/macos-defaults"
+    else
+        log "Skipping macOS defaults: not macOS"
+    fi
+fi
+
+log ""
+log "Setup complete."
+log "Next: open a new terminal or run these commands in your current shell:"
+log "source ~/.zprofile"
+log "source ~/.zshrc"
+log "source ~/.zshrc.local"
+
+if command -v remoteConnect >/dev/null 2>&1; then
+    log "remoteConnect is available now."
+else
+    log "remoteConnect is not yet in PATH for this shell. Run the source commands above."
+fi

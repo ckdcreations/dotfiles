@@ -1,0 +1,123 @@
+#!/bin/sh
+
+set -eu
+
+OUTPUT_DIR="$HOME/dotfiles-local-export"
+ARCHIVE=1
+INCLUDE_SSH=1
+FORCE=0
+
+usage() {
+    cat <<'EOF'
+Usage: ./bin/export-local-config [options]
+
+Options:
+  --output <dir>        Export directory path (default: ~/dotfiles-local-export)
+  --no-archive          Do not create a .tgz archive
+  --no-ssh              Exclude ~/.ssh from export
+  --force               Remove existing output directory before export
+  -h, --help            Show this help message
+
+Export contents:
+  <output>/gitconfig.local
+  <output>/zshrc.local
+  <output>/ssh/         (unless --no-ssh)
+  <output>.tgz          (unless --no-archive)
+EOF
+}
+
+log() {
+    printf '%s\n' "$1"
+}
+
+copy_if_exists() {
+    src=$1
+    dst=$2
+
+    if [ ! -e "$src" ]; then
+        log "Skipping missing file: $src"
+        return 0
+    fi
+
+    mkdir -p "$(dirname -- "$dst")"
+    cp "$src" "$dst"
+    log "Copied: $src -> $dst"
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --output)
+            if [ "$#" -lt 2 ]; then
+                log "Missing path for --output"
+                usage
+                exit 1
+            fi
+            OUTPUT_DIR=$2
+            shift 2
+            ;;
+        --no-archive)
+            ARCHIVE=0
+            shift
+            ;;
+        --no-ssh)
+            INCLUDE_SSH=0
+            shift
+            ;;
+        --force)
+            FORCE=1
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            log "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+if [ -e "$OUTPUT_DIR" ]; then
+    if [ "$FORCE" -eq 1 ]; then
+        rm -rf "$OUTPUT_DIR"
+    else
+        log "Output directory already exists: $OUTPUT_DIR"
+        log "Use --force to replace it."
+        exit 1
+    fi
+fi
+
+mkdir -p "$OUTPUT_DIR"
+
+copy_if_exists "$HOME/.gitconfig.local" "$OUTPUT_DIR/gitconfig.local"
+copy_if_exists "$HOME/.zshrc.local" "$OUTPUT_DIR/zshrc.local"
+
+if [ "$INCLUDE_SSH" -eq 1 ]; then
+    if [ -d "$HOME/.ssh" ]; then
+        mkdir -p "$OUTPUT_DIR/ssh"
+        cp -R "$HOME/.ssh/." "$OUTPUT_DIR/ssh/"
+        log "Copied: $HOME/.ssh -> $OUTPUT_DIR/ssh"
+    else
+        log "Skipping missing directory: $HOME/.ssh"
+    fi
+fi
+
+if [ "$ARCHIVE" -eq 1 ]; then
+    PARENT_DIR=$(dirname -- "$OUTPUT_DIR")
+    BASE_NAME=$(basename -- "$OUTPUT_DIR")
+    ARCHIVE_PATH="$OUTPUT_DIR.tgz"
+
+    rm -f "$ARCHIVE_PATH"
+    tar -C "$PARENT_DIR" -czf "$ARCHIVE_PATH" "$BASE_NAME"
+    log "Created archive: $ARCHIVE_PATH"
+fi
+
+log ""
+log "Export complete."
+log "Restore on new machine with:"
+log "./bin/new-machine-setup --brew --macos-defaults --restore-local \"$OUTPUT_DIR\""
+if [ "$ARCHIVE" -eq 1 ]; then
+    log "Or transfer archive: $OUTPUT_DIR.tgz"
+fi
