@@ -119,9 +119,6 @@ fi
 # alias to make dotfile maangement easier and gitable
 alias dotfiles='git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 
-# alias to connect to Symetrix VPN
-alias symetrix='netExtender --username=cdunn@symetrix.co --password=1@mTh3Walru5 --domain=corp.symetrix.com vpn.symetrix.co'
-
 # alias update to use apt update and apt upgrade
 alias up='sudo apt update && sudo apt upgrade -y'
 
