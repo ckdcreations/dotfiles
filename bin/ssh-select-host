@@ -1,0 +1,77 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$#" -ne 4 ]; then
+    printf 'Usage: %s <print|local|mesh> <local_host> <mesh_host> <port>\n' "$0" >&2
+    exit 2
+fi
+
+MODE=$1
+LOCAL_HOST=$2
+MESH_HOST=$3
+PORT=$4
+SSH_PROBE_TIMEOUT=${SSH_PROBE_TIMEOUT:-3}
+
+is_ssh_reachable() {
+    host_name=$1
+    probe_output=''
+
+    [ -n "$host_name" ] || return 1
+
+    # Fast-path: keyscan works when the host exposes SSH host keys normally.
+    if ssh-keyscan -T "$SSH_PROBE_TIMEOUT" -p "$PORT" "$host_name" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # Some hosts deny keyscan but are still reachable over SSH.
+    # Treat explicit auth-denied responses as reachable for host selection.
+    probe_output=$(ssh \
+        -o BatchMode=yes \
+        -o NumberOfPasswordPrompts=0 \
+        -o PubkeyAuthentication=no \
+        -o PreferredAuthentications=none,password,keyboard-interactive \
+        -o ConnectTimeout="$SSH_PROBE_TIMEOUT" \
+        -o StrictHostKeyChecking=accept-new \
+        -p "$PORT" \
+        "$host_name" \
+        exit 2>&1 || true)
+
+    case "$probe_output" in
+        *"Permission denied"*|*"Authentication failed"*)
+            return 0
+            ;;
+    esac
+
+    return 1
+}
+
+resolve_host() {
+    if is_ssh_reachable "$LOCAL_HOST"; then
+        printf '%s\n' "$LOCAL_HOST"
+        return 0
+    fi
+
+    if is_ssh_reachable "$MESH_HOST"; then
+        printf '%s\n' "$MESH_HOST"
+        return 0
+    fi
+
+    return 1
+}
+
+case "$MODE" in
+    print)
+        resolve_host
+        ;;
+    local)
+        is_ssh_reachable "$LOCAL_HOST"
+        ;;
+    mesh)
+        ! is_ssh_reachable "$LOCAL_HOST" && is_ssh_reachable "$MESH_HOST"
+        ;;
+    *)
+        printf 'Unsupported mode: %s\n' "$MODE" >&2
+        exit 2
+        ;;
+esac

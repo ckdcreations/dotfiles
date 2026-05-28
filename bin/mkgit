@@ -1,0 +1,173 @@
+#!/bin/sh
+# mkgit — mkdir + git init, with optional GitHub repo creation/rename to match
+# the directory name.
+#
+# Usage mirrors mkdir: you may pass multiple directories.
+# The --github flag creates or renames the GitHub repo so its name always
+# matches the folder name.
+
+set -eu
+
+VISIBILITY=private
+GITHUB=0
+REMOTE_NAME=origin
+PUSH=0
+HOST=github.com
+OWNER=
+DIRS=
+
+usage() {
+    cat <<'EOF'
+Usage: mkgit [options] <dir> [dir2 ...]
+
+Creates each <dir>, initialises a git repository inside it, and optionally
+creates or renames the matching GitHub repository so its name always equals
+the folder basename.
+
+Options:
+  --github             Create (or rename) the GitHub repository to match the
+                       folder name. Requires the gh CLI and authentication.
+  --public             Make the GitHub repository public (default: private)
+  --private            Make the GitHub repository private (default)
+  --remote <name>      Remote name to configure (default: origin)
+  --push               Push an initial empty commit after creating the remote
+  --host <host>        GitHub hostname (default: github.com)
+  --owner <owner>      GitHub owner/org (default: authenticated user)
+  -h, --help           Show this help message and exit
+
+Examples:
+  mkgit my-new-project
+  mkgit --github my-new-project
+  mkgit --github --public notes experiments
+  mkgit --github --owner ckdcreations CliffBooks
+EOF
+}
+
+log()  { printf '%s\n' "$1"; }
+die()  { printf 'mkgit: %s\n' "$1" >&2; exit 1; }
+
+require_gh() {
+    command -v gh >/dev/null 2>&1 || die "GitHub CLI (gh) is not installed."
+}
+
+ensure_auth() {
+    gh auth status --hostname "$HOST" >/dev/null 2>&1 \
+        || die "Not authenticated to $HOST. Run bin/github-auth-setup first."
+}
+
+resolve_owner() {
+    [ -n "$OWNER" ] && return 0
+    OWNER=$(gh api user --jq .login)
+}
+
+# ── argument parsing ─────────────────────────────────────────────────────────
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --github)    GITHUB=1;             shift ;;
+        --public)    VISIBILITY=public;    shift ;;
+        --private)   VISIBILITY=private;   shift ;;
+        --push)      PUSH=1;               shift ;;
+        -h|--help)   usage; exit 0 ;;
+        --remote)
+            [ "$#" -lt 2 ] && die "Missing value for --remote"
+            REMOTE_NAME=$2; shift 2 ;;
+        --host)
+            [ "$#" -lt 2 ] && die "Missing value for --host"
+            HOST=$2; shift 2 ;;
+        --owner)
+            [ "$#" -lt 2 ] && die "Missing value for --owner"
+            OWNER=$2; shift 2 ;;
+        --*)
+            die "Unknown option: $1" ;;
+        *)
+            # Accumulate directory arguments
+            DIRS="${DIRS} $1"; shift ;;
+    esac
+done
+
+[ -z "$DIRS" ] && { usage; exit 1; }
+
+if [ "$GITHUB" -eq 1 ]; then
+    require_gh
+    ensure_auth
+    resolve_owner
+fi
+
+# ── main loop — one iteration per directory argument ─────────────────────────
+for DIR in $DIRS; do
+    NAME=$(basename "$DIR")
+
+    # ── 1. create directory ──────────────────────────────────────────────────
+    if [ -e "$DIR" ] && [ ! -d "$DIR" ]; then
+        die "'$DIR' exists and is not a directory"
+    fi
+    mkdir -p "$DIR"
+    log "Created directory: $DIR"
+
+    # ── 2. initialise or reuse git repo ─────────────────────────────────────
+    if git -C "$DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        log "Already a git repository: $DIR"
+        IS_NEW_REPO=0
+    else
+        git -C "$DIR" init -q
+        git -C "$DIR" checkout -q -b main 2>/dev/null \
+            || git -C "$DIR" branch -m main 2>/dev/null \
+            || true
+        log "Initialised git repository: $DIR (branch: main)"
+        IS_NEW_REPO=1
+    fi
+
+    # ── 3. optionally wire up GitHub ─────────────────────────────────────────
+    [ "$GITHUB" -eq 0 ] && continue
+
+    FULL_NAME="$OWNER/$NAME"
+
+    # Does the remote already exist?
+    if git -C "$DIR" remote get-url "$REMOTE_NAME" >/dev/null 2>&1; then
+        # Remote exists — check whether the GitHub repo name matches
+        CURRENT_REMOTE=$(git -C "$DIR" remote get-url "$REMOTE_NAME")
+        CURRENT_REPO=$(printf '%s' "$CURRENT_REMOTE" \
+            | sed 's|.*github\.com[:/]\([^/]*/[^/]*\)\.git$|\1|' \
+            | sed 's|.*github\.com[:/]\([^/]*/[^/]*\)$|\1|')
+
+        if [ "$CURRENT_REPO" = "$FULL_NAME" ]; then
+            log "GitHub remote already matches '$FULL_NAME' — nothing to do"
+        else
+            # Rename the GitHub repo to match the folder name
+            OLD_REPO=$(printf '%s' "$CURRENT_REPO" | cut -d/ -f2)
+            log "Renaming GitHub repository '$CURRENT_REPO' -> '$FULL_NAME'"
+            gh api \
+                --method PATCH \
+                --hostname "$HOST" \
+                "repos/$CURRENT_REPO" \
+                -f name="$NAME" \
+                --silent
+            # gh renames the remote URL automatically on your account; update
+            # the local remote just in case it used SSH vs HTTPS
+            NEW_URL="git@${HOST}:${FULL_NAME}.git"
+            git -C "$DIR" remote set-url "$REMOTE_NAME" "$NEW_URL"
+            log "Updated remote '$REMOTE_NAME' -> $NEW_URL"
+        fi
+    else
+        # No remote yet — create the GitHub repo
+        log "Creating GitHub repository: $FULL_NAME ($VISIBILITY)"
+        gh repo create "$FULL_NAME" \
+            "--$VISIBILITY" \
+            --source "$DIR" \
+            --remote "$REMOTE_NAME" \
+            ${PUSH:+--push} \
+            2>&1 | { grep -v '^$' || true; }
+        log "GitHub repository created: https://$HOST/$FULL_NAME"
+    fi
+
+    # ── 4. optional initial push ─────────────────────────────────────────────
+    if [ "$PUSH" -eq 1 ] && [ "$IS_NEW_REPO" -eq 1 ]; then
+        # Create an empty initial commit so the branch exists remotely
+        if [ -z "$(git -C "$DIR" status --porcelain)" ]; then
+            git -C "$DIR" commit -q --allow-empty -m "Initial commit"
+            log "Created initial empty commit"
+        fi
+        git -C "$DIR" push -q -u "$REMOTE_NAME" main
+        log "Pushed to $REMOTE_NAME/main"
+    fi
+done

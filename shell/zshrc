@@ -1,3 +1,17 @@
+export NVM_DIR="$HOME/.nvm"
+
+if [ -s "/opt/homebrew/opt/nvm/nvm.sh" ]; then
+    . "/opt/homebrew/opt/nvm/nvm.sh"
+elif [ -s "/usr/local/opt/nvm/nvm.sh" ]; then
+    . "/usr/local/opt/nvm/nvm.sh"
+fi
+
+if [ -s "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" ]; then
+    . "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm"
+elif [ -s "/usr/local/opt/nvm/etc/bash_completion.d/nvm" ]; then
+    . "/usr/local/opt/nvm/etc/bash_completion.d/nvm"
+fi
+
 HISTFILE="$HOME/.zsh_history"
 HISTSIZE=50000
 SAVEHIST=50000
@@ -35,6 +49,10 @@ fi
 mkcd() {
     mkdir -p -- "$1" && cd -- "$1"
 }
+
+if [[ -o interactive ]] && [[ -z "${TMUX:-}" ]] && [[ "${TERM_PROGRAM:-}" == "Apple_Terminal" ]] && command -v copilot-tmux-start >/dev/null 2>&1; then
+    exec copilot-tmux-start
+fi
 
 if [ -f "$HOME/.zshrc.local" ]; then
     . "$HOME/.zshrc.local"

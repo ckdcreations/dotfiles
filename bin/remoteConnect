@@ -2,9 +2,63 @@
 
 set -eu
 
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SSH_DIR=${SSH_DIR:-"$HOME/.ssh"}
 CONFIG_FILE="$SSH_DIR/config"
 LOCAL_ALIASES_FILE="$HOME/.zshrc.local"
+SELECT_HOST_HELPER="$SCRIPT_DIR/ssh-select-host"
+STATE_HOME=${XDG_STATE_HOME:-"$HOME/.local/state"}
+LOG_FILE=${REMOTE_CONNECT_LOG:-"$STATE_HOME/remoteConnect/remoteConnect.log"}
+BOOTSTRAP_SSH_OPTS="-o ConnectTimeout=5 -o ConnectionAttempts=1 -o BatchMode=no -o PubkeyAuthentication=no -o PreferredAuthentications=keyboard-interactive,password"
+
+usage() {
+    cat <<'EOF'
+Usage:
+    remoteConnect [new|list|edit|delete|log|show]
+  remoteConnect help
+
+Commands:
+  new   Interactive setup for a new remote host (default)
+    list  Show remoteConnect-managed hosts and shell aliases (use --commands for full command view)
+    edit  Update an existing remoteConnect-managed host (supports: remoteConnect edit <alias>)
+  delete  Remove an existing remoteConnect-managed host
+    log   Show recent remoteConnect log entries (supports -t N)
+    show  Alias for log
+  help  Show this help text
+EOF
+}
+
+init_logging() {
+    log_dir=$(dirname "$LOG_FILE")
+    mkdir -p "$log_dir"
+    if [ ! -f "$LOG_FILE" ]; then
+        touch "$LOG_FILE"
+    fi
+    chmod 600 "$LOG_FILE" 2>/dev/null || true
+}
+
+log_msg() {
+    level=$1
+    shift
+
+    if [ -z "${LOG_FILE:-}" ]; then
+        return 0
+    fi
+
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    printf '%s [%s] %s\n' "$timestamp" "$level" "$*" >> "$LOG_FILE"
+}
+
+on_exit() {
+    exit_code=$?
+    if [ "$exit_code" -eq 0 ]; then
+        log_msg INFO "Finished command successfully"
+    else
+        log_msg ERROR "Exited with status $exit_code"
+    fi
+}
+
+trap on_exit EXIT
 
 ensure_ssh_dir() {
     mkdir -p "$SSH_DIR"
@@ -41,6 +95,15 @@ prompt_with_default() {
     if [ -z "$value" ]; then
         value=$default_value
     fi
+    eval "$out_var=\$value"
+}
+
+prompt_optional() {
+    prompt_text=$1
+    out_var=$2
+
+    printf '%s' "$prompt_text"
+    IFS= read -r value
     eval "$out_var=\$value"
 }
 
@@ -87,6 +150,304 @@ alias_cmd_exists() {
     grep -Eq "^[[:space:]]*alias[[:space:]]+$alias_name=" "$LOCAL_ALIASES_FILE"
 }
 
+is_generated_config_file() {
+    file_path=$1
+    [ -f "$file_path" ] || return 1
+    grep -Eq '^[[:space:]]*# Server: ' "$file_path"
+}
+
+generated_aliases_have_shell_alias() {
+    alias_name=$1
+    [ -f "$LOCAL_ALIASES_FILE" ] || return 1
+    grep -Fq "alias $alias_name=\"ssh $alias_name\"" "$LOCAL_ALIASES_FILE"
+}
+
+extract_generated_hosts() {
+    [ -f "$CONFIG_FILE" ] || return 0
+
+    awk '
+        /^# Server: / {
+            server=$0
+            sub(/^# Server: /, "", server)
+            next
+        }
+        /^[[:space:]]*Host[[:space:]]+/ && server != "" {
+            alias=$2
+            print server "\t" alias
+            server=""
+        }
+    ' "$CONFIG_FILE"
+}
+
+list_generated_aliases() {
+    include_commands=${1:-0}
+    found=0
+
+    if [ -f "$CONFIG_FILE" ]; then
+        printf 'remoteConnect SSH aliases in %s\n' "$CONFIG_FILE"
+        while IFS='\t' read -r server_name alias_name; do
+            [ -n "$alias_name" ] || continue
+            found=1
+            printf '- %s -> %s' "$alias_name" "$server_name"
+            if generated_aliases_have_shell_alias "$alias_name"; then
+                printf ' (shell alias present)'
+            fi
+            printf '\n'
+
+            if [ "$include_commands" -eq 1 ]; then
+                show_alias_commands "$alias_name"
+            fi
+        done <<EOF
+$(extract_generated_hosts)
+EOF
+    fi
+
+    if [ "$found" -eq 0 ]; then
+        printf 'No remoteConnect-managed SSH aliases found in %s.\n' "$CONFIG_FILE"
+        log_msg INFO "No generated aliases found in $CONFIG_FILE"
+    else
+        log_msg INFO "Listed generated aliases from $CONFIG_FILE"
+    fi
+}
+
+load_alias_details() {
+    target_alias=$1
+
+    details=$(awk -v target_alias="$target_alias" '
+        function print_result() {
+            print server "\t" alias "\t" base_host "\t" user "\t" port "\t" identity "\t" local_host "\t" mesh_host
+        }
+
+        /^# Server: / {
+            if (in_target == 1) {
+                print_result()
+                exit
+            }
+
+            server=$0
+            sub(/^# Server: /, "", server)
+            in_target=0
+            alias=""
+            base_host=""
+            user=""
+            port=""
+            identity=""
+            local_host=""
+            mesh_host=""
+            expect=""
+            next
+        }
+
+        /^[[:space:]]*Host[[:space:]]+/ {
+            if ($2 == target_alias) {
+                in_target=1
+                alias=$2
+                expect=""
+            } else if (in_target == 1) {
+                print_result()
+                exit
+            }
+            next
+        }
+
+        in_target == 1 && /^[[:space:]]+HostName[[:space:]]+/ {
+            if (expect == "local") {
+                local_host=$2
+                expect=""
+            } else if (expect == "mesh") {
+                mesh_host=$2
+                expect=""
+            } else if (base_host == "") {
+                base_host=$2
+            }
+            next
+        }
+
+        in_target == 1 && /^[[:space:]]+User[[:space:]]+/ {
+            user=$2
+            next
+        }
+
+        in_target == 1 && /^[[:space:]]+Port[[:space:]]+/ {
+            port=$2
+            next
+        }
+
+        in_target == 1 && /^[[:space:]]+IdentityFile[[:space:]]+/ {
+            identity=$2
+            next
+        }
+
+        in_target == 1 && /^Match host / {
+            if (index($0, " local ") > 0) {
+                expect="local"
+            } else if (index($0, " mesh ") > 0) {
+                expect="mesh"
+            }
+            next
+        }
+
+        END {
+            if (in_target == 1) {
+                print_result()
+            }
+        }
+    ' "$CONFIG_FILE")
+
+    if [ -z "$details" ]; then
+        return 1
+    fi
+
+    IFS='\t' read -r ALIAS_SERVER_NAME ALIAS_NAME ALIAS_BASE_HOST ALIAS_USER ALIAS_PORT ALIAS_IDENTITY ALIAS_LOCAL_HOST ALIAS_MESH_HOST <<EOF
+$details
+EOF
+
+    if [ -z "$ALIAS_LOCAL_HOST" ] && [ -z "$ALIAS_MESH_HOST" ]; then
+        ALIAS_LOCAL_HOST=$ALIAS_BASE_HOST
+    fi
+
+    return 0
+}
+
+show_alias_commands() {
+    alias_name=$1
+
+    if ! load_alias_details "$alias_name"; then
+        printf '  command: could not resolve details for %s\n' "$alias_name"
+        return 1
+    fi
+
+    printf '  command: ssh %s\n' "$alias_name"
+    printf '  resolved: ssh -i %s -p %s %s@<dynamic-host>\n' "$ALIAS_IDENTITY" "$ALIAS_PORT" "$ALIAS_USER"
+
+    if [ -n "$ALIAS_LOCAL_HOST" ] && [ -n "$ALIAS_MESH_HOST" ]; then
+        printf '  hosts: local=%s mesh=%s (local preferred)\n' "$ALIAS_LOCAL_HOST" "$ALIAS_MESH_HOST"
+    elif [ -n "$ALIAS_LOCAL_HOST" ]; then
+        printf '  hosts: local=%s\n' "$ALIAS_LOCAL_HOST"
+    else
+        printf '  hosts: mesh=%s\n' "$ALIAS_MESH_HOST"
+    fi
+
+    if generated_aliases_have_shell_alias "$alias_name"; then
+        printf '  shell alias: alias %s="ssh %s"\n' "$alias_name" "$alias_name"
+    fi
+}
+
+remove_config_block_by_alias() {
+    alias_name=$1
+    tmp_file=$(mktemp "$SSH_DIR/.remoteConnect.XXXXXX")
+
+    awk -v alias_name="$alias_name" '
+        function flush_block() {
+            if (block != "" && keep_block) {
+                printf "%s", block
+            }
+            block = ""
+            keep_block = 1
+            saw_host = 0
+        }
+
+        /^# Server: / {
+            flush_block()
+        }
+
+        {
+            block = block $0 "\n"
+        }
+
+        /^[[:space:]]*Host[[:space:]]+/ && $2 == alias_name {
+            keep_block = 0
+            saw_host = 1
+        }
+
+        END {
+            if (block != "" && keep_block) {
+                printf "%s", block
+            }
+        }
+    ' "$CONFIG_FILE" > "$tmp_file"
+
+    mv "$tmp_file" "$CONFIG_FILE"
+}
+
+remove_shell_alias() {
+    alias_name=$1
+
+    [ -f "$LOCAL_ALIASES_FILE" ] || return 0
+    tmp_file=$(mktemp "$HOME/.zshrc.local.remoteConnect.XXXXXX")
+    awk -v alias_name="$alias_name" '
+        function flush_block() {
+            if (block != "" && keep_block) {
+                printf "%s", block
+            }
+            block = ""
+            keep_block = 1
+        }
+
+        /^# Created by remoteConnect/ {
+            flush_block()
+        }
+
+        {
+            block = block $0 "\n"
+            if ($0 == "alias " alias_name "=\"ssh " alias_name "\"") {
+                keep_block = 0
+            }
+        }
+
+        END {
+            if (block != "" && keep_block) {
+                printf "%s", block
+            }
+        }
+    ' "$LOCAL_ALIASES_FILE" > "$tmp_file"
+
+    mv "$tmp_file" "$LOCAL_ALIASES_FILE"
+}
+
+select_generated_alias() {
+    list_generated_aliases
+    printf '\n'
+    prompt_required 'Enter SSH alias to continue: ' SELECTED_ALIAS
+    if ! host_alias_exists "$SELECTED_ALIAS"; then
+        printf 'Alias "%s" was not found in %s.\n' "$SELECTED_ALIAS" "$CONFIG_FILE"
+        log_msg ERROR "Alias $SELECTED_ALIAS not found in $CONFIG_FILE"
+        exit 1
+    fi
+}
+
+shell_single_quote() {
+    printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\''/g")"
+}
+
+build_match_exec_command() {
+    mode=$1
+    local_host=$2
+    mesh_host=$3
+    port=$4
+
+    printf '%s %s %s %s %s' \
+        "$(shell_single_quote sh)" \
+        "$(shell_single_quote "$SELECT_HOST_HELPER")" \
+        "$(shell_single_quote "$mode")" \
+        "$(shell_single_quote "$local_host")" \
+        "$(shell_single_quote "$mesh_host")" \
+        "$(shell_single_quote "$port")"
+}
+
+select_connection_host() {
+    local_host=$1
+    mesh_host=$2
+    port=$3
+
+    if [ ! -r "$SELECT_HOST_HELPER" ]; then
+        printf 'Helper script not readable: %s\n' "$SELECT_HOST_HELPER" >&2
+        return 2
+    fi
+
+    sh "$SELECT_HOST_HELPER" print "$local_host" "$mesh_host" "$port"
+}
+
 install_public_key() {
     pub_key_file=$1
     remote_user=$2
@@ -94,30 +455,174 @@ install_public_key() {
     port=$4
 
     if command -v ssh-copy-id >/dev/null 2>&1; then
-        ssh-copy-id -i "$pub_key_file" -p "$port" "$remote_user@$host_name"
+        printf 'Using ssh-copy-id. Enter the remote password at the SSH prompt when requested.\n'
+        ssh-copy-id \
+            $BOOTSTRAP_SSH_OPTS \
+            -i "$pub_key_file" \
+            -p "$port" \
+            "$remote_user@$host_name"
         return 0
     fi
 
     printf 'ssh-copy-id not found. Falling back to manual key install over SSH.\n'
-    cat "$pub_key_file" | ssh -p "$port" "$remote_user@$host_name" \
+    printf 'Enter the remote password at the SSH prompt when requested.\n'
+    cat "$pub_key_file" | ssh \
+        $BOOTSTRAP_SSH_OPTS \
+        -p "$port" \
+        "$remote_user@$host_name" \
         'umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys; cat >> ~/.ssh/authorized_keys'
 }
 
+cleanup_failed_setup() {
+    if [ "${KEY_CREATED_IN_RUN:-0}" -eq 1 ] && [ -n "${KEY_FILE:-}" ] && [ -f "$KEY_FILE" ]; then
+        rm -f "$KEY_FILE"
+        log_msg INFO "Removed key created during failed setup: $KEY_FILE"
+    fi
+
+    if [ "${PUB_CREATED_IN_RUN:-0}" -eq 1 ] && [ -n "${KEY_FILE:-}" ] && [ -f "$KEY_FILE.pub" ]; then
+        rm -f "$KEY_FILE.pub"
+        log_msg INFO "Removed public key created during failed setup: $KEY_FILE.pub"
+    fi
+}
+
 create_ssh_host_entry() {
-    alias_name=$1
-    host_name=$2
-    remote_user=$3
-    port=$4
-    key_file=$5
+    server_name=$1
+    alias_name=$2
+    local_host=$3
+    mesh_host=$4
+    remote_user=$5
+    port=$6
+    key_file=$7
+
+    default_host=$local_host
+    if [ -z "$default_host" ]; then
+        default_host=$mesh_host
+    fi
+
+    local_match_cmd=$(build_match_exec_command local "$local_host" "$mesh_host" "$port")
+    mesh_match_cmd=$(build_match_exec_command mesh "$local_host" "$mesh_host" "$port")
 
     {
-        printf '\nHost %s\n' "$alias_name"
-        printf '    HostName %s\n' "$host_name"
+        printf '\n# Server: %s\n' "$server_name"
+        printf 'Host %s\n' "$alias_name"
+        printf '    HostName %s\n' "$default_host"
         printf '    User %s\n' "$remote_user"
         printf '    Port %s\n' "$port"
         printf '    IdentityFile %s\n' "$key_file"
         printf '    IdentitiesOnly yes\n'
+        printf '    HostKeyAlias %s\n' "$alias_name"
+
+        if [ -n "$local_host" ] && [ -n "$mesh_host" ]; then
+            printf '\nMatch host %s exec %s\n' "$alias_name" "$local_match_cmd"
+            printf '    HostName %s\n' "$local_host"
+            printf '\nMatch host %s exec %s\n' "$alias_name" "$mesh_match_cmd"
+            printf '    HostName %s\n' "$mesh_host"
+        fi
     } >> "$CONFIG_FILE"
+}
+
+edit_generated_alias() {
+    requested_alias=${1:-}
+
+    ensure_ssh_dir
+
+    if ! is_generated_config_file "$CONFIG_FILE"; then
+        printf 'No remoteConnect-managed aliases were found in %s.\n' "$CONFIG_FILE"
+        log_msg INFO "Edit requested with no generated aliases"
+        exit 1
+    fi
+
+    if [ -n "$requested_alias" ]; then
+        SELECTED_ALIAS=$requested_alias
+        if ! host_alias_exists "$SELECTED_ALIAS"; then
+            printf 'Alias "%s" was not found in %s.\n' "$SELECTED_ALIAS" "$CONFIG_FILE"
+            exit 1
+        fi
+    else
+        select_generated_alias
+    fi
+
+    existing_alias=$SELECTED_ALIAS
+
+    if ! load_alias_details "$existing_alias"; then
+        printf 'Failed to load settings for alias %s.\n' "$existing_alias"
+        exit 1
+    fi
+
+    printf 'Editing alias: %s\n' "$existing_alias"
+    prompt_with_default 'Server name' "$ALIAS_SERVER_NAME" SERVER_NAME
+    prompt_with_default 'Remote username' "$ALIAS_USER" REMOTE_USER
+    prompt_with_default 'SSH port' "$ALIAS_PORT" SSH_PORT
+    prompt_with_default 'Local private key path' "$ALIAS_IDENTITY" KEY_FILE
+
+    default_local=$ALIAS_LOCAL_HOST
+    default_mesh=$ALIAS_MESH_HOST
+    prompt_with_default 'Local network host (IP or DNS, optional)' "$default_local" LOCAL_HOST
+    prompt_with_default 'Meshnet host/IP (optional)' "$default_mesh" MESH_HOST
+
+    if [ -z "$LOCAL_HOST" ] && [ -z "$MESH_HOST" ]; then
+        printf 'At least one host is required.\n'
+        exit 1
+    fi
+
+    remove_config_block_by_alias "$existing_alias"
+    create_ssh_host_entry "$SERVER_NAME" "$existing_alias" "$LOCAL_HOST" "$MESH_HOST" "$REMOTE_USER" "$SSH_PORT" "$KEY_FILE"
+
+    if [ -f "$LOCAL_ALIASES_FILE" ] && grep -Fq "alias $existing_alias=\"ssh $existing_alias\"" "$LOCAL_ALIASES_FILE"; then
+        remove_shell_alias "$existing_alias"
+        create_shell_alias "$existing_alias" "$existing_alias"
+    fi
+
+    log_msg INFO "Updated alias $existing_alias"
+    printf 'Updated alias: %s\n' "$existing_alias"
+    show_alias_commands "$existing_alias"
+}
+
+delete_generated_alias() {
+    ensure_ssh_dir
+
+    if ! is_generated_config_file "$CONFIG_FILE"; then
+        printf 'No remoteConnect-managed aliases were found in %s.\n' "$CONFIG_FILE"
+        log_msg INFO "Delete requested with no generated aliases"
+        exit 1
+    fi
+
+    select_generated_alias
+    existing_alias=$SELECTED_ALIAS
+
+    if ! confirm_yes_no "Delete remoteConnect alias $existing_alias?"; then
+        log_msg INFO "Delete cancelled for alias $existing_alias"
+        printf 'Cancelled.\n'
+        exit 0
+    fi
+
+    remove_config_block_by_alias "$existing_alias"
+    remove_shell_alias "$existing_alias"
+    log_msg INFO "Deleted alias $existing_alias"
+    printf 'Deleted remoteConnect alias: %s\n' "$existing_alias"
+}
+
+show_log() {
+    lines=50
+
+    if [ "${1:-}" = "-t" ] || [ "${1:-}" = "--tail" ]; then
+        if [ -n "${2:-}" ]; then
+            lines=$2
+        else
+            printf 'Missing value for %s\n' "$1" >&2
+            exit 2
+        fi
+    elif [ -n "${1:-}" ]; then
+        lines=$1
+    fi
+
+    printf 'remoteConnect log file: %s\n' "$LOG_FILE"
+    if [ ! -f "$LOG_FILE" ]; then
+        printf 'No log file found yet.\n'
+        return 0
+    fi
+
+    tail -n "$lines" "$LOG_FILE"
 }
 
 create_shell_alias() {
@@ -142,7 +647,6 @@ create_shell_alias() {
 }
 
 reload_local_aliases_if_possible() {
-    # Only a sourced script can modify the caller shell environment.
     if (return 0 2>/dev/null); then
         if [ -f "$LOCAL_ALIASES_FILE" ]; then
             # shellcheck disable=SC1090
@@ -159,63 +663,150 @@ sanitize_for_key_name() {
     printf '%s' "$input" | tr -c 'a-zA-Z0-9._-' '_'
 }
 
-ensure_ssh_dir
-
-printf 'Remote SSH passwordless setup\n'
-printf 'This will create an SSH host alias and install your public key on the remote server.\n\n'
-
-while :; do
-    prompt_required 'SSH host alias (example: myserver): ' SSH_ALIAS
-    if validate_alias_name "$SSH_ALIAS"; then
-        break
-    fi
-    printf 'Alias can only include letters, numbers, dot, underscore, and dash.\n'
-done
-
-if host_alias_exists "$SSH_ALIAS"; then
-    printf 'An SSH host alias named "%s" already exists in %s.\n' "$SSH_ALIAS" "$CONFIG_FILE"
-    printf 'Choose a different alias or remove the existing entry first.\n'
-    exit 1
-fi
-
-prompt_required 'Remote host (IP or DNS name): ' HOST_NAME
-prompt_required 'Remote username: ' REMOTE_USER
-prompt_with_default 'SSH port' '22' SSH_PORT
-
-KEY_BASENAME=$(sanitize_for_key_name "$SSH_ALIAS")
-DEFAULT_KEY_FILE="$SSH_DIR/id_ed25519_$KEY_BASENAME"
-prompt_with_default 'Local private key path' "$DEFAULT_KEY_FILE" KEY_FILE
-
-if [ -f "$KEY_FILE" ]; then
-    printf 'Using existing key: %s\n' "$KEY_FILE"
-else
-    prompt_with_default 'Key comment' "$REMOTE_USER@$HOST_NAME" KEY_COMMENT
-    ssh-keygen -t ed25519 -f "$KEY_FILE" -C "$KEY_COMMENT" -N ''
-fi
-
-if [ ! -f "$KEY_FILE.pub" ]; then
-    ssh-keygen -y -f "$KEY_FILE" > "$KEY_FILE.pub"
-fi
-
-printf '\nInstalling public key on remote host. You may be prompted for the remote account password once.\n'
-install_public_key "$KEY_FILE.pub" "$REMOTE_USER" "$HOST_NAME" "$SSH_PORT"
-
-create_ssh_host_entry "$SSH_ALIAS" "$HOST_NAME" "$REMOTE_USER" "$SSH_PORT" "$KEY_FILE"
-
-printf '\nSSH host alias created.\n'
-printf 'Connect with: ssh %s\n' "$SSH_ALIAS"
-
-if confirm_yes_no 'Create a shell alias command for quick connect (alias <name>="ssh <host>")?'; then
+collect_hosts() {
     while :; do
-        prompt_required 'Shell alias command name: ' ALIAS_CMD
-        if validate_alias_name "$ALIAS_CMD"; then
+        prompt_optional 'Local network host (IP or DNS, optional): ' LOCAL_HOST
+        prompt_optional 'Meshnet host/IP (optional): ' MESH_HOST
+
+        if [ -n "$LOCAL_HOST" ] || [ -n "$MESH_HOST" ]; then
+            return 0
+        fi
+
+        printf 'Provide at least one host: local or meshnet.\n'
+    done
+}
+
+new_setup() {
+    ensure_ssh_dir
+    log_msg INFO "Starting new setup"
+    KEY_CREATED_IN_RUN=0
+    PUB_CREATED_IN_RUN=0
+
+    printf 'Remote SSH passwordless setup\n'
+    printf 'This will create an SSH host alias and install your public key on the remote server.\n\n'
+
+    prompt_required 'Server name (human-friendly label): ' SERVER_NAME
+
+    while :; do
+        prompt_required 'SSH host alias (example: myserver): ' SSH_ALIAS
+        if validate_alias_name "$SSH_ALIAS"; then
             break
         fi
         printf 'Alias can only include letters, numbers, dot, underscore, and dash.\n'
     done
 
-    create_shell_alias "$ALIAS_CMD" "$SSH_ALIAS"
-    reload_local_aliases_if_possible
-fi
+    if host_alias_exists "$SSH_ALIAS"; then
+        log_msg ERROR "Alias $SSH_ALIAS already exists"
+        printf 'An SSH host alias named "%s" already exists in %s.\n' "$SSH_ALIAS" "$CONFIG_FILE"
+        printf 'Choose a different alias or remove the existing entry first.\n'
+        exit 1
+    fi
 
-printf 'Done.\n'
+    collect_hosts
+    prompt_required 'Remote username: ' REMOTE_USER
+    prompt_with_default 'SSH port' '22' SSH_PORT
+
+    KEY_BASENAME=$(sanitize_for_key_name "$SSH_ALIAS")
+    DEFAULT_KEY_FILE="$SSH_DIR/id_ed25519_$KEY_BASENAME"
+    prompt_with_default 'Local private key path' "$DEFAULT_KEY_FILE" KEY_FILE
+
+    if [ -f "$KEY_FILE" ]; then
+        printf 'Using existing key: %s\n' "$KEY_FILE"
+    else
+        DEFAULT_KEY_COMMENT="$REMOTE_USER@$SERVER_NAME"
+        prompt_with_default 'Key comment' "$DEFAULT_KEY_COMMENT" KEY_COMMENT
+        ssh-keygen -t ed25519 -f "$KEY_FILE" -C "$KEY_COMMENT" -N ''
+        KEY_CREATED_IN_RUN=1
+        log_msg INFO "Created key during setup: $KEY_FILE"
+    fi
+
+    if [ ! -f "$KEY_FILE.pub" ]; then
+        ssh-keygen -y -f "$KEY_FILE" > "$KEY_FILE.pub"
+        PUB_CREATED_IN_RUN=1
+        log_msg INFO "Created public key during setup: $KEY_FILE.pub"
+    fi
+
+    if ! SETUP_HOST=$(select_connection_host "$LOCAL_HOST" "$MESH_HOST" "$SSH_PORT"); then
+        log_msg ERROR "No reachable hosts for alias $SSH_ALIAS on port $SSH_PORT"
+        cleanup_failed_setup
+        printf '\nNeither the local host nor the Meshnet host is reachable over SSH on port %s.\n' "$SSH_PORT"
+        printf 'Check your network connection, the server addresses, or your Meshnet status, then try again.\n'
+        exit 1
+    fi
+
+    log_msg INFO "Installing key for alias $SSH_ALIAS using setup host $SETUP_HOST"
+    printf '\nInstalling public key on remote host via %s.\n' "$SETUP_HOST"
+    if ! install_public_key "$KEY_FILE.pub" "$REMOTE_USER" "$SETUP_HOST" "$SSH_PORT"; then
+        log_msg ERROR "Key installation failed for $REMOTE_USER@$SETUP_HOST:$SSH_PORT"
+        cleanup_failed_setup
+        printf '\nFailed to install SSH key.\n'
+        printf 'If you saw "Permission denied", confirm username/password and whether password auth is allowed for this account.\n'
+        printf 'Any key files created by this failed run were removed from ~/.ssh.\n'
+        printf 'Review recent events with: remoteConnect log\n'
+        exit 1
+    fi
+
+    create_ssh_host_entry "$SERVER_NAME" "$SSH_ALIAS" "$LOCAL_HOST" "$MESH_HOST" "$REMOTE_USER" "$SSH_PORT" "$KEY_FILE"
+    log_msg INFO "Created SSH config entry for alias $SSH_ALIAS"
+
+    printf '\nSSH host alias created.\n'
+    printf 'Connect with: ssh %s\n' "$SSH_ALIAS"
+
+    if confirm_yes_no 'Create a shell alias command for quick connect (alias <name>="ssh <host>")?'; then
+        while :; do
+            prompt_required 'Shell alias command name: ' ALIAS_CMD
+            if validate_alias_name "$ALIAS_CMD"; then
+                break
+            fi
+            printf 'Alias can only include letters, numbers, dot, underscore, and dash.\n'
+        done
+
+        create_shell_alias "$ALIAS_CMD" "$SSH_ALIAS"
+        reload_local_aliases_if_possible
+    fi
+
+    printf 'Done.\n'
+}
+
+main() {
+    cmd=${1:-new}
+    init_logging
+    log_msg INFO "Command invoked: $cmd"
+
+    case "$cmd" in
+        new)
+            new_setup
+            ;;
+        list)
+            ensure_ssh_dir
+            if [ "${2:-}" = "--commands" ]; then
+                list_generated_aliases 1
+            else
+                list_generated_aliases
+            fi
+            ;;
+        edit)
+            edit_generated_alias "${2:-}"
+            ;;
+        delete)
+            delete_generated_alias
+            ;;
+        log)
+            show_log "${2:-}" "${3:-}"
+            ;;
+        show)
+            show_log "${2:-}" "${3:-}"
+            ;;
+        help|-h|--help)
+            usage
+            ;;
+        *)
+            log_msg ERROR "Unknown command: $cmd"
+            printf 'Unknown command: %s\n\n' "$cmd" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+}
+
+main "$@"

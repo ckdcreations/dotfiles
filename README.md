@@ -5,13 +5,14 @@ Portable shell, git, and machine setup for macOS and other UNIX-like systems.
 ## What this repo manages
 
 - `shell/zprofile` for login-shell environment setup
-- `shell/zshrc` for interactive zsh behavior and aliases
+- `shell/zshrc` for interactive zsh behavior, aliases, NVM, and Apple Terminal auto-tmux startup
 - `git/gitconfig` for shared Git defaults
 - `git/gitignore_global` for personal Git ignores
+- `bin/copilot-tmux-start` to open a split tmux session with GitHub Copilot CLI
 - `bin/bootstrap` to install symlinks with backups
 - `bin/update-system` to update common package managers
 - `bin/macos-defaults` for optional macOS preferences
-- `bin/remoteConnect` to set up passwordless SSH host aliases
+- `bin/remoteConnect` to run `new`, `list`, `edit`, `delete`, and `log` for passwordless SSH setup with local-first Meshnet fallback and troubleshooting logs
 - `bin/github-auth-setup` to configure GitHub CLI auth and git protocol
 - `bin/github-create-repo` to create and publish repos from local git
 

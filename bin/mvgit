@@ -1,0 +1,147 @@
+#!/bin/sh
+# mvgit — mv a directory (git repo) and optionally rename the GitHub repo to
+# match the new folder name.
+
+set -eu
+
+GITHUB=0
+REMOTE_NAME=origin
+HOST=github.com
+OWNER=
+
+usage() {
+    cat <<'EOF'
+Usage: mvgit [options] <source> <dest>
+
+Renames a directory that is a git repository and, with --github, renames
+the matching GitHub repository so its name stays in sync with the folder
+basename.
+
+Options:
+  --github             Rename the GitHub repository to match <dest> basename.
+                       Requires the gh CLI and authentication.
+  --remote <name>      Remote name to inspect/update (default: origin)
+  --host <host>        GitHub hostname (default: github.com)
+  --owner <owner>      GitHub owner/org (default: authenticated user)
+  -h, --help           Show this help message and exit
+
+Examples:
+  mvgit old-name new-name
+  mvgit --github old-name new-name
+  mvgit --github projects/CliffBooks projects/CliffBooks-v2
+EOF
+}
+
+log() { printf '%s\n' "$1"; }
+die() { printf 'mvgit: %s\n' "$1" >&2; exit 1; }
+
+require_gh() {
+    command -v gh >/dev/null 2>&1 || die "GitHub CLI (gh) is not installed."
+}
+
+ensure_auth() {
+    gh auth status --hostname "$HOST" >/dev/null 2>&1 \
+        || die "Not authenticated to $HOST. Run bin/github-auth-setup first."
+}
+
+resolve_owner() {
+    [ -n "$OWNER" ] && return 0
+    OWNER=$(gh api user --jq .login)
+}
+
+# ── argument parsing ─────────────────────────────────────────────────────────
+SRC=
+DEST=
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --github)  GITHUB=1;  shift ;;
+        -h|--help) usage; exit 0 ;;
+        --remote)
+            [ "$#" -lt 2 ] && die "Missing value for --remote"
+            REMOTE_NAME=$2; shift 2 ;;
+        --host)
+            [ "$#" -lt 2 ] && die "Missing value for --host"
+            HOST=$2; shift 2 ;;
+        --owner)
+            [ "$#" -lt 2 ] && die "Missing value for --owner"
+            OWNER=$2; shift 2 ;;
+        --*)
+            die "Unknown option: $1" ;;
+        *)
+            if [ -z "$SRC" ]; then
+                SRC=$1
+            elif [ -z "$DEST" ]; then
+                DEST=$1
+            else
+                die "Too many arguments — expected <source> <dest>"
+            fi
+            shift ;;
+    esac
+done
+
+[ -z "$SRC" ] || [ -z "$DEST" ] && { usage; exit 1; }
+
+# ── validate source ──────────────────────────────────────────────────────────
+[ -d "$SRC" ] || die "Source directory not found: $SRC"
+
+git -C "$SRC" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || die "'$SRC' is not a git repository"
+
+# Resolve the true worktree root (handles being called from a subdirectory)
+GIT_ROOT=$(git -C "$SRC" rev-parse --show-toplevel)
+[ "$GIT_ROOT" = "$(cd "$SRC" && pwd)" ] \
+    || die "'$SRC' is not the root of its git repository (root is $GIT_ROOT)"
+
+NEW_NAME=$(basename "$DEST")
+
+if [ "$GITHUB" -eq 1 ]; then
+    require_gh
+    ensure_auth
+    resolve_owner
+fi
+
+# ── 1. rename the directory ──────────────────────────────────────────────────
+# Abort if dest parent doesn't exist (mirror mv behaviour)
+DEST_PARENT=$(dirname "$DEST")
+[ -d "$DEST_PARENT" ] || die "Destination parent directory not found: $DEST_PARENT"
+[ -e "$DEST" ] && die "Destination already exists: $DEST"
+
+mv "$SRC" "$DEST"
+log "Renamed directory: $SRC -> $DEST"
+
+# ── 2. optionally rename on GitHub ──────────────────────────────────────────
+[ "$GITHUB" -eq 0 ] && exit 0
+
+# Get current remote URL from the now-moved repo
+if ! git -C "$DEST" remote get-url "$REMOTE_NAME" >/dev/null 2>&1; then
+    log "No remote '$REMOTE_NAME' configured — skipping GitHub rename"
+    exit 0
+fi
+
+CURRENT_REMOTE=$(git -C "$DEST" remote get-url "$REMOTE_NAME")
+
+# Extract owner/repo from SSH or HTTPS remote URL
+CURRENT_REPO=$(printf '%s' "$CURRENT_REMOTE" \
+    | sed 's|.*github\.com[:/]\([^/]*/[^/]*\)\.git$|\1|' \
+    | sed 's|.*github\.com[:/]\([^/]*/[^/]*\)$|\1|')
+
+CURRENT_REPO_NAME=$(printf '%s' "$CURRENT_REPO" | cut -d/ -f2)
+
+if [ "$CURRENT_REPO_NAME" = "$NEW_NAME" ]; then
+    log "GitHub repository name already matches '$NEW_NAME' — nothing to do"
+    exit 0
+fi
+
+log "Renaming GitHub repository '$CURRENT_REPO' -> '$OWNER/$NEW_NAME'"
+gh api \
+    --method PATCH \
+    --hostname "$HOST" \
+    "repos/$CURRENT_REPO" \
+    -f name="$NEW_NAME" \
+    --silent
+
+NEW_URL="git@${HOST}:${OWNER}/${NEW_NAME}.git"
+git -C "$DEST" remote set-url "$REMOTE_NAME" "$NEW_URL"
+log "Updated remote '$REMOTE_NAME' -> $NEW_URL"
+log "GitHub repository renamed: https://$HOST/$OWNER/$NEW_NAME"

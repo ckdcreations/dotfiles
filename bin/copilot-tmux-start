@@ -1,0 +1,21 @@
+#!/bin/sh
+
+set -eu
+
+command -v tmux >/dev/null 2>&1 || exit 0
+command -v gh >/dev/null 2>&1 || exit 0
+
+session_name="${COPILOT_TMUX_SESSION:-copilot-$(date +%Y%m%d-%H%M%S)-$$}"
+workdir="${COPILOT_TMUX_DIR:-$PWD}"
+
+tmux new-session -d -s "$session_name" -c "$workdir"
+tmux split-window -h -t "${session_name}:0" -c "$workdir" -p 50
+tmux send-keys -t "${session_name}:0.0" "gh copilot" C-m
+tmux select-pane -t "${session_name}:0.1"
+
+if [ "${COPILOT_TMUX_NO_ATTACH:-0}" = "1" ]; then
+    printf '%s\n' "$session_name"
+    exit 0
+fi
+
+exec tmux attach-session -t "$session_name"

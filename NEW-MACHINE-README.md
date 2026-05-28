@@ -63,6 +63,8 @@ source ~/.zshrc
 source ~/.zshrc.local
 ```
 
+After that, opening Apple Terminal starts your tmux + GitHub Copilot layout automatically.
+
 ## What the script does
 
 - Runs `bin/bootstrap` (or `bin/bootstrap --brew` with `--brew`)

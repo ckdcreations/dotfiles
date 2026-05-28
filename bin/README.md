@@ -2,6 +2,80 @@
 
 This directory contains helper scripts for bootstrapping and maintaining your machine.
 
+## mkgit
+
+Path: `bin/mkgit`
+
+Purpose:
+- Creates one or more directories and initialises a git repository inside each one.
+- With `--github`, creates or renames the matching GitHub repository so its name always equals the folder basename.
+- Accepts multiple directory arguments, matching `mkdir` syntax.
+
+Usage:
+
+```sh
+mkgit <dir> [dir2 ...]
+mkgit --github <dir> [dir2 ...]
+```
+
+Options:
+- `--github`: Create (or rename) the GitHub repository to match the folder name.
+- `--public` / `--private`: Visibility of the GitHub repository (default: private).
+- `--push`: Create an initial empty commit and push to the remote.
+- `--remote <name>`: Remote name (default: origin).
+- `--owner <owner>`: GitHub owner/org (default: authenticated user).
+- `--host <host>`: GitHub hostname (default: github.com).
+
+Examples:
+
+```sh
+# Local only — mkdir + git init
+mkgit my-new-project
+
+# mkdir + git init + create GitHub repo named my-new-project
+mkgit --github my-new-project
+
+# Multiple dirs at once, public repos, with initial push
+mkgit --github --public --push notes experiments
+
+# GitHub repo name will be renamed to match folder if it already exists remotely
+mkgit --github CliffBooks
+```
+
+## mvgit
+
+Path: `bin/mvgit`
+
+Purpose:
+- Renames a directory that is a git repository root.
+- With `--github`, renames the matching GitHub repository so its name stays in sync with the new folder basename.
+
+Usage:
+
+```sh
+mvgit <source> <dest>
+mvgit --github <source> <dest>
+```
+
+Options:
+- `--github`: Rename the GitHub repository to match the `<dest>` basename.
+- `--remote <name>`: Remote name to inspect/update (default: origin).
+- `--owner <owner>`: GitHub owner/org (default: authenticated user).
+- `--host <host>`: GitHub hostname (default: github.com).
+
+Examples:
+
+```sh
+# Local rename only
+mvgit old-name new-name
+
+# Rename folder + rename GitHub repo to match
+mvgit --github old-name new-name
+
+# Works with paths too
+mvgit --github projects/CliffBooks projects/CliffBooks-v2
+```
+
 ## bootstrap
 
 Path: `bin/bootstrap`
@@ -103,11 +177,21 @@ Usage:
 
 ```sh
 remoteConnect
+remoteConnect new
+remoteConnect list
+remoteConnect list --commands
+remoteConnect edit
+remoteConnect edit <alias>
+remoteConnect delete
+remoteConnect log
+remoteConnect help
 ```
 
 Prompt flow:
+- Server name (human-friendly label)
 - SSH host alias (name used with `ssh <alias>`)
-- Remote host (IP or DNS)
+- Local network host (optional)
+- Meshnet host/IP (optional)
 - Remote username
 - SSH port (default `22`)
 - Private key path (default `~/.ssh/id_ed25519_<alias>`)
@@ -116,9 +200,23 @@ Prompt flow:
 Behavior details:
 - Ensures `~/.ssh` and `~/.ssh/config` exist with secure permissions.
 - Generates an `ed25519` key if the selected key does not exist.
-- Uses `ssh-copy-id` when available, with a fallback method if not installed.
-- Appends a host block to `~/.ssh/config` with `IdentityFile` and `IdentitiesOnly yes`.
+- Requires at least one host value (local or Meshnet).
+- Uses `ssh-copy-id` when available, with fallback paths if it is not installed.
+- Uses built-in SSH/`ssh-copy-id` password prompts directly in the terminal during bootstrap.
+- Forces bootstrap auth to prefer terminal password prompts (`keyboard-interactive,password`) when the server allows it.
+- Fails fast if neither the provided local nor Meshnet address is reachable over SSH.
+- When both addresses are configured, the generated SSH alias prefers the local address and falls back to the Meshnet address automatically.
+- Appends a host block to `~/.ssh/config` with `IdentityFile`, `IdentitiesOnly yes`, and dynamic host selection when Meshnet is configured.
 - Refuses to overwrite an existing SSH host alias with the same name.
+- Writes a running troubleshooting log to `${XDG_STATE_HOME:-~/.local/state}/remoteConnect/remoteConnect.log`.
+- On setup failure, removes key files created during that failed run to avoid leftover `~/.ssh` artifacts.
+
+Management commands:
+- `remoteConnect list` shows generated SSH aliases from `~/.ssh/config` and notes whether a matching shell alias exists in `~/.zshrc.local`.
+- `remoteConnect list --commands` shows the exact alias command path (`ssh <alias>`) and resolved SSH options (identity file, port, user, host selection).
+- `remoteConnect edit <alias>` edits an existing alias in place by prompting with current values, then rewrites the SSH host block so `IdentityFile`, user, port, and local/mesh IP updates stay in sync.
+- `remoteConnect delete` removes the selected generated SSH alias and matching shell alias.
+- `remoteConnect log` prints recent entries from the running log file.
 
 Result:
 - Connect using `ssh <your-host-alias>`.
