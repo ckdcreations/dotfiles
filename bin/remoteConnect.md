@@ -41,6 +41,7 @@ Key installation behavior:
 - uses ssh-copy-id when available
 - falls back to manual SSH append to authorized_keys if ssh-copy-id is missing
 - uses terminal-native password prompts for bootstrap auth
+- if no host is reachable during setup, the alias is still created and key installation is deferred with follow-up commands
 
 ### list
 

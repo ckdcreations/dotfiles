@@ -30,4 +30,18 @@ Host proxmox
     IdentitiesOnly yes
     HostKeyAlias proxmox
 
+# Server: ckdCreations Mac Mini
+Host ckdMacMini
+    User ckdcreations
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_ckdMacMini
+    IdentitiesOnly yes
+    HostKeyAlias ckdMacMini
+
+Match originalhost ckdMacMini exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-select-host' 'local' '192.168.1.226' '100.97.179.166' '22'"
+    HostName 192.168.1.226
+
+Match originalhost ckdMacMini exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-select-host' 'mesh' '192.168.1.226' '100.97.179.166' '22'"
+    HostName 100.97.179.166
+
 Include ~/.ssh/config.local

@@ -318,12 +318,12 @@ Behavior details:
 - Uses `ssh-copy-id` when available, with fallback paths if it is not installed.
 - Uses built-in SSH/`ssh-copy-id` password prompts directly in the terminal during bootstrap.
 - Forces bootstrap auth to prefer terminal password prompts (`keyboard-interactive,password`) when the server allows it.
-- Fails fast if neither the provided local nor Meshnet address is reachable over SSH.
+- If neither local nor Meshnet is reachable during setup, still creates the alias and defers key installation with follow-up commands.
 - When both addresses are configured, the generated SSH alias prefers the local address and falls back to the Meshnet address automatically.
 - Appends a host block to `~/.ssh/config` with `IdentityFile`, `IdentitiesOnly yes`, and dynamic host selection when Meshnet is configured.
 - Refuses to overwrite an existing SSH host alias with the same name.
 - Writes a running troubleshooting log to `${XDG_STATE_HOME:-~/.local/state}/remoteConnect/remoteConnect.log`.
-- On setup failure, removes key files created during that failed run to avoid leftover `~/.ssh` artifacts.
+- On setup cancellation after key-install failure, removes key files created during that failed run to avoid leftover `~/.ssh` artifacts.
 - When `~/.ssh/config` is symlinked to `~/dotfiles/ssh/config`, changes made by `remoteConnect` are automatically tracked in the repo.
 
 Management commands:

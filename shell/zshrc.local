@@ -12,6 +12,9 @@ alias ckdMSI='ssh ckdMSI'
 # Created by remoteConnect
 alias proxmox='ssh proxmox'
 
+# Created by remoteConnect
+alias ckdMacMini='ssh ckdMacMini'
+
 if [ -f "$HOME/.zshrc.machine.local" ]; then
     . "$HOME/.zshrc.machine.local"
 fi

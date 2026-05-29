@@ -12,6 +12,19 @@ LOCAL_HOST=$2
 MESH_HOST=$3
 PORT=$4
 SSH_PROBE_TIMEOUT=${SSH_PROBE_TIMEOUT:-3}
+PING_REQUIRE=${SSH_SELECT_REQUIRE_PING:-1}
+PING_COUNT=${SSH_SELECT_PING_COUNT:-1}
+
+case "$(uname -s)" in
+    Darwin)
+        # macOS ping -W is milliseconds.
+        PING_WAIT=${SSH_SELECT_PING_WAIT:-500}
+        ;;
+    *)
+        # Most non-macOS ping -W values are seconds.
+        PING_WAIT=${SSH_SELECT_PING_WAIT:-1}
+        ;;
+esac
 
 is_ssh_reachable() {
     host_name=$1
@@ -19,8 +32,21 @@ is_ssh_reachable() {
 
     [ -n "$host_name" ] || return 1
 
+
+    printf 'Checking %s... ' "$host_name" >&2
+
+    # Optional pre-check: ping before any SSH attempt.
+    # Set SSH_SELECT_REQUIRE_PING=0 when ICMP is blocked but SSH is allowed.
+    if [ "$PING_REQUIRE" = "1" ]; then
+        if ! ping -n -c "$PING_COUNT" -W "$PING_WAIT" "$host_name" >/dev/null 2>&1; then
+            printf 'unreachable (no ping)\n' >&2
+            return 1
+        fi
+    fi
+
     # Fast-path: keyscan works when the host exposes SSH host keys normally.
     if ssh-keyscan -T "$SSH_PROBE_TIMEOUT" -p "$PORT" "$host_name" >/dev/null 2>&1; then
+        printf 'reachable (ssh-keyscan)\n' >&2
         return 0
     fi
 
@@ -39,24 +65,29 @@ is_ssh_reachable() {
 
     case "$probe_output" in
         *"Permission denied"*|*"Authentication failed"*)
+            printf 'reachable (ssh-auth-denied)\n' >&2
             return 0
             ;;
     esac
 
+    printf 'unreachable (no ssh)\n' >&2
     return 1
 }
 
 resolve_host() {
+    printf 'Checking local network...\n' >&2
     if is_ssh_reachable "$LOCAL_HOST"; then
         printf '%s\n' "$LOCAL_HOST"
         return 0
     fi
 
+    printf 'Checking mesh network...\n' >&2
     if is_ssh_reachable "$MESH_HOST"; then
         printf '%s\n' "$MESH_HOST"
         return 0
     fi
 
+    printf 'No reachable hosts found.\n' >&2
     return 1
 }
 
