@@ -434,6 +434,45 @@ remove_shell_alias() {
     mv "$tmp_file" "$LOCAL_ALIASES_FILE"
 }
 
+expand_home_path() {
+    input_path=$1
+    case "$input_path" in
+        ~/*)
+            printf '%s/%s' "$HOME" "${input_path#~/}"
+            ;;
+        *)
+            printf '%s' "$input_path"
+            ;;
+    esac
+}
+
+remove_key_files() {
+    key_path=$1
+    removed_any=0
+
+    [ -n "$key_path" ] || return 0
+
+    resolved_key=$(expand_home_path "$key_path")
+
+    if [ -f "$resolved_key" ]; then
+        rm -f "$resolved_key"
+        removed_any=1
+        log_msg INFO "Removed SSH private key: $resolved_key"
+        printf 'Removed key: %s\n' "$resolved_key"
+    fi
+
+    if [ -f "$resolved_key.pub" ]; then
+        rm -f "$resolved_key.pub"
+        removed_any=1
+        log_msg INFO "Removed SSH public key: $resolved_key.pub"
+        printf 'Removed key: %s\n' "$resolved_key.pub"
+    fi
+
+    if [ "$removed_any" -eq 0 ]; then
+        log_msg INFO "No key files found to remove for path: $resolved_key"
+    fi
+}
+
 select_generated_alias() {
     list_generated_aliases
     printf '\n'
@@ -647,6 +686,13 @@ delete_generated_alias() {
     select_generated_alias
     existing_alias=$SELECTED_ALIAS
 
+    if ! load_alias_details "$existing_alias"; then
+        printf 'Failed to load settings for alias %s.\n' "$existing_alias"
+        exit 1
+    fi
+
+    identity_to_remove=$ALIAS_IDENTITY
+
     if ! confirm_yes_no "Delete remoteConnect alias $existing_alias?"; then
         log_msg INFO "Delete cancelled for alias $existing_alias"
         printf 'Cancelled.\n'
@@ -655,6 +701,7 @@ delete_generated_alias() {
 
     remove_config_block_by_alias "$existing_alias"
     remove_shell_alias "$existing_alias"
+    remove_key_files "$identity_to_remove"
     log_msg INFO "Deleted alias $existing_alias"
     printf 'Deleted remoteConnect alias: %s\n' "$existing_alias"
 }
