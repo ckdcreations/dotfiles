@@ -6,3 +6,40 @@ fi
 
 export DOTFILES="$HOME/dotfiles"
 export PATH="$DOTFILES/bin:$HOME/.local/bin:$HOME/bin:$PATH"
+
+if [[ -o login && -o interactive && -x "$DOTFILES/bin/updatedot" ]]; then
+    _updatedot_output="$($DOTFILES/bin/updatedot 2>&1 || true)"
+    if [ -n "$_updatedot_output" ]; then
+        printf '%s\n' "$_updatedot_output"
+    fi
+
+    case "$_updatedot_output" in
+        *"Dotfiles updated from "*)
+            printf 'Dotfiles changed. [r]eload now, open [n]ew terminal window, or [s]kip? [r/n/s]: '
+            IFS= read -r _updatedot_choice
+            case "$_updatedot_choice" in
+                r|R)
+                    # shellcheck disable=SC1090
+                    . "$HOME/.zshrc"
+                    ;;
+                n|N)
+                    if command -v osascript >/dev/null 2>&1; then
+                        if [ "${TERM_PROGRAM:-}" = "Apple_Terminal" ]; then
+                            osascript -e 'tell application "Terminal" to do script ""' >/dev/null 2>&1 || true
+                        elif [ "${TERM_PROGRAM:-}" = "iTerm.app" ]; then
+                            osascript -e 'tell application "iTerm" to create window with default profile' >/dev/null 2>&1 || true
+                        else
+                            printf 'Could not auto-open a new window for this terminal app.\n'
+                        fi
+                    else
+                        printf 'osascript is not available; cannot open a new terminal window automatically.\n'
+                    fi
+                    ;;
+                *)
+                    ;;
+            esac
+            ;;
+        *)
+            ;;
+    esac
+fi

@@ -2,6 +2,32 @@
 
 This directory contains helper scripts for bootstrapping and maintaining your machine.
 
+## updatedot
+
+Path: `bin/updatedot`
+
+Purpose:
+- Checks your `~/dotfiles` repository against GitHub (`origin`) and ensures it is up to date.
+- Fast-forwards local branch when behind.
+- Reports when local is ahead or diverged (without forcing history changes).
+- Calls `source ~/.zshrc` at the end.
+
+Usage:
+
+```sh
+updatedot
+```
+
+Behavior details:
+- Fetches from `origin`.
+- Uses the current branch and configured upstream (or sets upstream to `origin/<branch>` if missing and available).
+- Pulls with `--ff-only` when behind.
+- Exits with an error when branch has diverged.
+
+Notes:
+- Also add `alias reload="source ~/.zshrc"` in shell config for manual reloads.
+- When run as a normal executable, the `source ~/.zshrc` call happens in the script shell; run `reload` in your current terminal to apply changes to your active session.
+
 ## mkgit
 
 Path: `bin/mkgit`

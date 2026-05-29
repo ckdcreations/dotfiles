@@ -1,0 +1,77 @@
+#!/bin/sh
+
+set -eu
+
+DOTFILES_DIR=${DOTFILES_DIR:-"$HOME/dotfiles"}
+REMOTE=${REMOTE:-origin}
+
+log() {
+    printf '%s\n' "$1"
+}
+
+die() {
+    printf 'updatedot: %s\n' "$1" >&2
+    exit 1
+}
+
+if ! command -v git >/dev/null 2>&1; then
+    die "git is required"
+fi
+
+if [ ! -d "$DOTFILES_DIR" ]; then
+    die "dotfiles directory not found: $DOTFILES_DIR"
+fi
+
+if ! git -C "$DOTFILES_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    die "not a git repository: $DOTFILES_DIR"
+fi
+
+branch=$(git -C "$DOTFILES_DIR" branch --show-current)
+[ -n "$branch" ] || die "unable to determine current branch"
+
+UPDATED=0
+
+log "Fetching latest from $REMOTE..."
+git -C "$DOTFILES_DIR" fetch "$REMOTE"
+
+upstream=$(git -C "$DOTFILES_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+
+if [ -z "$upstream" ]; then
+    if git -C "$DOTFILES_DIR" show-ref --verify --quiet "refs/remotes/$REMOTE/$branch"; then
+        git -C "$DOTFILES_DIR" branch --set-upstream-to "$REMOTE/$branch" "$branch" >/dev/null
+        upstream="$REMOTE/$branch"
+        log "Set upstream to $upstream"
+    else
+        die "no upstream is configured for '$branch' and '$REMOTE/$branch' does not exist"
+    fi
+fi
+
+counts=$(git -C "$DOTFILES_DIR" rev-list --left-right --count "$upstream...HEAD")
+behind=$(printf '%s' "$counts" | awk '{print $1}')
+ahead=$(printf '%s' "$counts" | awk '{print $2}')
+
+if [ "$behind" -gt 0 ] && [ "$ahead" -eq 0 ]; then
+    log "Local branch is behind $upstream by $behind commit(s). Fast-forwarding..."
+    git -C "$DOTFILES_DIR" pull --ff-only "$REMOTE" "$branch"
+    log "Dotfiles updated from $upstream"
+    UPDATED=1
+elif [ "$behind" -eq 0 ] && [ "$ahead" -eq 0 ]; then
+    log "Dotfiles already up to date with $upstream"
+elif [ "$behind" -eq 0 ] && [ "$ahead" -gt 0 ]; then
+    log "Dotfiles is ahead of $upstream by $ahead commit(s). Nothing pulled."
+else
+    die "branch has diverged from $upstream (ahead $ahead, behind $behind). Resolve manually."
+fi
+
+if [ "$UPDATED" -eq 1 ] && [ -f "$HOME/.zshrc" ]; then
+    # Reload only affects the active shell if this script is sourced from zsh.
+    if (return 0 2>/dev/null) && [ -n "${ZSH_VERSION:-}" ]; then
+        # shellcheck disable=SC1090
+        . "$HOME/.zshrc"
+        log "Reloaded ~/.zshrc in current shell"
+    else
+        log "Run 'reload' to apply ~/.zshrc changes in your current terminal session"
+    fi
+elif [ "$UPDATED" -eq 1 ]; then
+    log "~/.zshrc not found; skipped reload"
+fi
