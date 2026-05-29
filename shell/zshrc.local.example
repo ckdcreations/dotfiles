@@ -1,3 +1,5 @@
 # Local aliases and machine-specific overrides belong here.
 # Example:
 # alias work='cd ~/Documents/Programming'
+# Optional: auto-start split tmux + GitHub Copilot CLI only in Apple Terminal.
+# export COPILOT_TMUX_AUTO_START=1
