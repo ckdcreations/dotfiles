@@ -189,6 +189,65 @@ Notes:
 - Some package manager actions may prompt for sudo credentials.
 - The script assumes your dotfiles repo is at `~/dotfiles` for the Brewfile step.
 
+## update-dotfiles
+
+Path: `bin/update-dotfiles`
+
+Purpose:
+- Safely updates local dotfiles from your git remote and branch.
+- Auto-stashes local changes by default, pulls with rebase, then restores your work.
+- Re-runs `./bin/bootstrap` so symlinks and local setup stay aligned with updated repo files.
+
+Usage:
+
+```sh
+./bin/update-dotfiles
+```
+
+Options:
+- `--remote <name>`: Git remote to update from (default: `origin`).
+- `--branch <name>`: Branch to update from (default: `main`).
+- `--hard`: Force local repo to exactly match `<remote>/<branch>` (destructive).
+- `--no-stash`: Fail if working tree is dirty instead of auto-stashing.
+- `--no-bootstrap`: Skip re-running bootstrap after git update.
+- `--brew`: Passes `--brew` to bootstrap.
+- `--ensure-tools`: Runs `./bin/cli-tools --install` after update.
+
+Examples:
+
+```sh
+./bin/update-dotfiles
+./bin/update-dotfiles --branch main
+./bin/update-dotfiles --hard
+./bin/update-dotfiles --ensure-tools
+```
+
+## cli-tools
+
+Path: `bin/cli-tools`
+
+Purpose:
+- Prints a snapshot of key command-line tool availability and versions.
+- Optionally runs Homebrew bundle install from `./Brewfile` first.
+
+Usage:
+
+```sh
+./bin/cli-tools
+```
+
+Options:
+- `--install`: Runs `brew bundle --file ./Brewfile` before snapshot.
+- `--output <file>`: Writes snapshot to a file and stdout.
+
+Examples:
+
+```sh
+./bin/cli-tools
+./bin/cli-tools --install
+./bin/cli-tools --output "$HOME/.local/state/dotfiles/cli-tools-latest.txt"
+```
+
 ## remoteConnect
 
 Path: `bin/remoteConnect`

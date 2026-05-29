@@ -1,0 +1,145 @@
+#!/bin/sh
+
+set -eu
+
+DOTFILES_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+BREWFILE="$DOTFILES_DIR/Brewfile"
+INSTALL=0
+OUTPUT_FILE=
+
+usage() {
+    cat <<'EOF'
+Usage: ./bin/cli-tools [options]
+
+Snapshots common command-line tool availability and versions.
+Can also auto-install/update tools via Homebrew Brewfile.
+
+Options:
+  --install             Run brew bundle using ./Brewfile before snapshot
+  --output <file>       Write report to file as well as stdout
+  -h, --help            Show this help message
+
+Examples:
+  ./bin/cli-tools
+  ./bin/cli-tools --install
+  ./bin/cli-tools --install --output "$HOME/.local/state/dotfiles/cli-tools.txt"
+EOF
+}
+
+log() {
+    printf '%s\n' "$1"
+}
+
+append_line() {
+    line=$1
+    log "$line"
+    if [ -n "$OUTPUT_FILE" ]; then
+        printf '%s\n' "$line" >>"$OUTPUT_FILE"
+    fi
+}
+
+get_version() {
+    cmd=$1
+
+    case "$cmd" in
+        git) git --version 2>/dev/null | head -n 1 ;;
+        gh) gh --version 2>/dev/null | head -n 1 ;;
+        tmux) tmux -V 2>/dev/null | head -n 1 ;;
+        rg) rg --version 2>/dev/null | head -n 1 ;;
+        fd) fd --version 2>/dev/null | head -n 1 ;;
+        fzf) fzf --version 2>/dev/null | head -n 1 ;;
+        jq) jq --version 2>/dev/null | head -n 1 ;;
+        bat) bat --version 2>/dev/null | head -n 1 ;;
+        eza) eza --version 2>/dev/null | head -n 1 ;;
+        tree) tree --version 2>/dev/null | head -n 1 ;;
+        brew) brew --version 2>/dev/null | head -n 1 ;;
+        zsh) zsh --version 2>/dev/null | head -n 1 ;;
+        node) node --version 2>/dev/null | head -n 1 ;;
+        npm) npm --version 2>/dev/null | awk '{print "npm "$0}' ;;
+        python3) python3 --version 2>/dev/null | head -n 1 ;;
+        *) "$cmd" --version 2>/dev/null | head -n 1 ;;
+    esac
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --install)
+            INSTALL=1
+            shift
+            ;;
+        --output)
+            [ "$#" -ge 2 ] || {
+                printf 'Error: missing value for --output\n' >&2
+                exit 1
+            }
+            OUTPUT_FILE=$2
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            printf 'Error: unknown option: %s\n' "$1" >&2
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+if [ -n "$OUTPUT_FILE" ]; then
+    mkdir -p "$(dirname -- "$OUTPUT_FILE")"
+    : >"$OUTPUT_FILE"
+fi
+
+if [ "$INSTALL" -eq 1 ]; then
+    if ! command -v brew >/dev/null 2>&1; then
+        printf 'Error: Homebrew not found. Install Homebrew first, then rerun with --install.\n' >&2
+        exit 1
+    fi
+    if [ ! -f "$BREWFILE" ]; then
+        printf 'Error: Brewfile not found at %s\n' "$BREWFILE" >&2
+        exit 1
+    fi
+    log "Running brew bundle from $BREWFILE"
+    brew bundle --file "$BREWFILE"
+fi
+
+append_line "CLI Tool Snapshot"
+append_line "Generated: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+append_line "Host: $(hostname)"
+append_line "OS: $(uname -s) $(uname -r)"
+append_line ""
+
+TOOLS="zsh git gh tmux brew rg fd fzf jq bat eza tree node npm python3"
+MISSING=""
+
+for tool in $TOOLS; do
+    if command -v "$tool" >/dev/null 2>&1; then
+        version=$(get_version "$tool" || true)
+        if [ -n "$version" ]; then
+            append_line "[ok] $tool - $version"
+        else
+            append_line "[ok] $tool - installed"
+        fi
+    else
+        append_line "[missing] $tool"
+        if [ -z "$MISSING" ]; then
+            MISSING=$tool
+        else
+            MISSING="$MISSING, $tool"
+        fi
+    fi
+done
+
+append_line ""
+if [ -z "$MISSING" ]; then
+    append_line "Missing tools: none"
+else
+    append_line "Missing tools: $MISSING"
+    append_line "Tip: run ./bin/cli-tools --install to install Brewfile tools."
+fi
+
+if [ -n "$OUTPUT_FILE" ]; then
+    log "Snapshot saved to: $OUTPUT_FILE"
+fi

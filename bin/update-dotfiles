@@ -1,0 +1,164 @@
+#!/bin/sh
+
+set -eu
+
+DOTFILES_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+REMOTE=origin
+BRANCH=main
+AUTO_STASH=1
+FORCE_RESET=0
+RUN_BOOTSTRAP=1
+INSTALL_BREW=0
+ENSURE_TOOLS=0
+
+usage() {
+    cat <<'EOF'
+Usage: ./bin/update-dotfiles [options]
+
+Safely updates local dotfiles from a remote branch, then re-runs bootstrap
+so managed links are in sync.
+
+Options:
+  --remote <name>       Git remote to pull from (default: origin)
+  --branch <name>       Branch to pull (default: main)
+  --hard                Reset local repo to <remote>/<branch> (destructive)
+  --no-stash            Do not auto-stash local changes before update
+  --no-bootstrap        Do not run ./bin/bootstrap after update
+  --brew                Pass --brew to bootstrap (macOS Homebrew bundle)
+  --ensure-tools        Run ./bin/cli-tools --install after update
+  -h, --help            Show this help message
+
+Examples:
+  ./bin/update-dotfiles
+  ./bin/update-dotfiles --branch main
+  ./bin/update-dotfiles --hard
+  ./bin/update-dotfiles --ensure-tools
+EOF
+}
+
+log() {
+    printf '%s\n' "$1"
+}
+
+fail() {
+    printf 'Error: %s\n' "$1" >&2
+    exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --remote)
+            [ "$#" -ge 2 ] || fail "Missing value for --remote"
+            REMOTE=$2
+            shift 2
+            ;;
+        --branch)
+            [ "$#" -ge 2 ] || fail "Missing value for --branch"
+            BRANCH=$2
+            shift 2
+            ;;
+        --hard)
+            FORCE_RESET=1
+            shift
+            ;;
+        --no-stash)
+            AUTO_STASH=0
+            shift
+            ;;
+        --no-bootstrap)
+            RUN_BOOTSTRAP=0
+            shift
+            ;;
+        --brew)
+            INSTALL_BREW=1
+            shift
+            ;;
+        --ensure-tools)
+            ENSURE_TOOLS=1
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            fail "Unknown option: $1"
+            ;;
+    esac
+done
+
+if [ ! -d "$DOTFILES_DIR/.git" ]; then
+    fail "Expected a git repository at $DOTFILES_DIR"
+fi
+
+cd "$DOTFILES_DIR"
+
+if ! git remote get-url "$REMOTE" >/dev/null 2>&1; then
+    fail "Remote '$REMOTE' does not exist"
+fi
+
+if [ "$FORCE_RESET" -eq 1 ] && [ "$AUTO_STASH" -eq 0 ]; then
+    log "Note: --no-stash is ignored with --hard"
+fi
+
+stash_created=0
+
+if [ "$FORCE_RESET" -eq 0 ]; then
+    if [ -n "$(git status --porcelain)" ]; then
+        if [ "$AUTO_STASH" -eq 1 ]; then
+            STASH_MSG="update-dotfiles-$(date +%Y%m%d-%H%M%S)"
+            log "Saving local changes to stash: $STASH_MSG"
+            git stash push -u -m "$STASH_MSG" >/dev/null
+            stash_created=1
+        else
+            fail "Working tree is dirty. Commit/stash changes or rerun without --no-stash."
+        fi
+    fi
+fi
+
+log "Fetching $REMOTE..."
+git fetch "$REMOTE"
+
+if [ "$FORCE_RESET" -eq 1 ]; then
+    log "Resetting to $REMOTE/$BRANCH"
+    git reset --hard "$REMOTE/$BRANCH"
+else
+    log "Pulling latest changes with rebase from $REMOTE/$BRANCH"
+    if ! git pull --rebase "$REMOTE" "$BRANCH"; then
+        if [ "$stash_created" -eq 1 ]; then
+            log "Pull failed. Restoring stashed local changes..."
+            git stash pop || true
+        fi
+        fail "Update failed during pull --rebase"
+    fi
+fi
+
+if [ "$stash_created" -eq 1 ]; then
+    log "Restoring stashed local changes..."
+    if ! git stash pop; then
+        fail "Stash pop reported conflicts. Resolve them, then continue."
+    fi
+fi
+
+if [ "$RUN_BOOTSTRAP" -eq 1 ]; then
+    log "Re-linking managed files with bootstrap..."
+    if [ "$INSTALL_BREW" -eq 1 ]; then
+        ./bin/bootstrap --brew
+    else
+        ./bin/bootstrap
+    fi
+fi
+
+if [ "$ENSURE_TOOLS" -eq 1 ]; then
+    if [ -x "$DOTFILES_DIR/bin/cli-tools" ]; then
+        log "Ensuring CLI tools from Brewfile..."
+        "$DOTFILES_DIR/bin/cli-tools" --install
+    else
+        fail "Requested --ensure-tools but ./bin/cli-tools was not found"
+    fi
+fi
+
+log ""
+log "Dotfiles update complete."
+log "Current status:"
+git status --short --branch
