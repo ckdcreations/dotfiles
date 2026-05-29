@@ -1,0 +1,33 @@
+# Shared SSH aliases tracked in dotfiles.
+#
+# Machine-specific additions belong in ~/.ssh/config.local, which is included at
+# the end of this file and intentionally stays outside git.
+
+# Server: ckdCreations MSI Laptop
+Host ckdMSI
+    HostName 192.168.1.227
+    User ckdcreations
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_ckdMSI
+    IdentitiesOnly yes
+    HostKeyAlias ckdMSI
+
+# Server: ckdCreations ASUS Laptop
+Host ckdASUS
+    HostName 192.168.1.219
+    User ckdcreations
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_ckdASUS
+    IdentitiesOnly yes
+    HostKeyAlias ckdASUS
+
+# Server: Proxmox Host
+Host proxmox
+    HostName 192.168.1.143
+    User root
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_proxmox
+    IdentitiesOnly yes
+    HostKeyAlias proxmox
+
+Include ~/.ssh/config.local

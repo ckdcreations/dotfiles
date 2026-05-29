@@ -8,6 +8,10 @@
     ~/.bashrc: bashrc
     ~/.vimrc: vimrc
     ~/.dircolors: dircolors
+    ~/.zprofile: shell/zprofile
+    ~/.zshrc: shell/zshrc
+    ~/.zshrc.local: shell/zshrc.local
+    ~/.ssh/config: ssh/config
 
 - shell:
   - [git submodule update --init --recursive, Installing submodules]

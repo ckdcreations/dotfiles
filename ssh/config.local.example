@@ -1,0 +1,2 @@
+# Machine-specific SSH hosts belong here.
+# This file is intentionally not tracked and is included from ~/.ssh/config.

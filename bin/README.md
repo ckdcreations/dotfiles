@@ -110,6 +110,7 @@ Purpose:
 - Links managed dotfiles into your home directory.
 - Preserves existing files by moving them into a timestamped backup folder.
 - Creates local override files from examples when missing.
+- Links the shared SSH config and generates any missing per-device SSH keys for managed hosts.
 
 Usage:
 
@@ -119,6 +120,7 @@ Usage:
 
 Options:
 - `--brew`: On macOS, runs `brew bundle --file ./Brewfile` after linking.
+- `--install-new-ssh-keys`: Installs newly generated managed SSH public keys onto matching remotes.
 
 Behavior details:
 - Detects the repository root automatically from the script location.
@@ -129,11 +131,15 @@ Behavior details:
   - `git/gitignore_global` -> `~/.gitignore_global`
   - `shell/zprofile` -> `~/.zprofile`
   - `shell/zshrc` -> `~/.zshrc`
+  - `shell/zshrc.local` -> `~/.zshrc.local`
+  - `ssh/config` -> `~/.ssh/config`
 - Creates these local files if missing:
   - `~/.gitconfig.local` from `git/gitconfig.local.example`
-  - `~/.zshrc.local` from `shell/zshrc.local.example`
+  - `~/.zshrc.machine.local` from `shell/zshrc.machine.local.example`
+  - `~/.ssh/config.local` from `ssh/config.local.example`
 - Special case for existing `~/.gitconfig`:
   - If it is a regular file and `~/.gitconfig.local` is missing, the file is moved to `~/.gitconfig.local`.
+- Generates missing `IdentityFile` keypairs for aliases defined in `ssh/config`.
 
 Examples:
 
@@ -197,6 +203,7 @@ Purpose:
 - Safely updates local dotfiles from your git remote and branch.
 - Auto-stashes local changes by default, pulls with rebase, then restores your work.
 - Re-runs `./bin/bootstrap` so symlinks and local setup stay aligned with updated repo files.
+- Supports generating and optionally installing newly missing managed SSH keys.
 
 Usage:
 
@@ -212,6 +219,7 @@ Options:
 - `--no-bootstrap`: Skip re-running bootstrap after git update.
 - `--brew`: Passes `--brew` to bootstrap.
 - `--ensure-tools`: Runs `./bin/cli-tools --install` after update.
+- `--install-new-ssh-keys`: Passes `--install-new-ssh-keys` through to bootstrap, or directly to `ensure-managed-ssh` when bootstrap is skipped.
 
 Examples:
 
@@ -220,6 +228,22 @@ Examples:
 ./bin/update-dotfiles --branch main
 ./bin/update-dotfiles --hard
 ./bin/update-dotfiles --ensure-tools
+updatedot
+updatedot --install-new-ssh-keys
+```
+
+## updatedot
+
+Path: `bin/updatedot`
+
+Purpose:
+- Short wrapper for `bin/update-dotfiles`.
+
+Usage:
+
+```sh
+updatedot
+updatedot --install-new-ssh-keys
 ```
 
 ## cli-tools
@@ -300,6 +324,7 @@ Behavior details:
 - Refuses to overwrite an existing SSH host alias with the same name.
 - Writes a running troubleshooting log to `${XDG_STATE_HOME:-~/.local/state}/remoteConnect/remoteConnect.log`.
 - On setup failure, removes key files created during that failed run to avoid leftover `~/.ssh` artifacts.
+- When `~/.ssh/config` is symlinked to `~/dotfiles/ssh/config`, changes made by `remoteConnect` are automatically tracked in the repo.
 
 Management commands:
 - `remoteConnect list` shows generated SSH aliases from `~/.ssh/config` and notes whether a matching shell alias exists in `~/.zshrc.local`.
@@ -320,7 +345,8 @@ Purpose:
 - One-command setup for a new machine after cloning this repo.
 - Runs bootstrap (optionally with Homebrew bundle install).
 - Optionally applies macOS defaults.
-- Optionally restores local-only files (`.gitconfig.local`, `.zshrc.local`, `.ssh`) from an export folder.
+- Generates missing managed SSH keys for the new device.
+- Optionally restores local-only files (`.gitconfig.local`, `.zshrc.machine.local`, `.ssh`) from an export folder.
 
 Usage:
 
@@ -333,10 +359,11 @@ Options:
 - `--macos-defaults`: Runs `./bin/macos-defaults` on macOS.
 - `--restore-local <dir>`: Restores local files from `<dir>`.
 - `--force-restore`: Overwrite existing local files during restore.
+- `--install-new-ssh-keys`: Installs newly generated managed SSH public keys onto matching remotes.
 
 Restore folder format:
 - `<dir>/gitconfig.local`
-- `<dir>/zshrc.local`
+- `<dir>/zshrc.machine.local`
 - `<dir>/ssh/` (optional, includes SSH config and keys)
 
 Examples:
@@ -344,6 +371,23 @@ Examples:
 ```sh
 ./bin/new-machine-setup --brew --macos-defaults
 ./bin/new-machine-setup --brew --macos-defaults --restore-local "$HOME/dotfiles-local-export"
+```
+
+## ensure-managed-ssh
+
+Path: `bin/ensure-managed-ssh`
+
+Purpose:
+- Links the repo-managed SSH config into `~/.ssh/config`.
+- Creates `~/.ssh/config.local` when it is missing.
+- Generates missing `IdentityFile` keypairs for the tracked SSH aliases.
+- Optionally installs newly generated public keys onto the target remotes.
+
+Usage:
+
+```sh
+./bin/ensure-managed-ssh
+./bin/ensure-managed-ssh --install-new-keys
 ```
 
 ## export-local-config
@@ -369,7 +413,7 @@ Options:
 
 Export contents:
 - `<output>/gitconfig.local`
-- `<output>/zshrc.local`
+- `<output>/zshrc.machine.local`
 - `<output>/ssh/` (unless `--no-ssh`)
 - `<output>.tgz` (unless `--no-archive`)
 

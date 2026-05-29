@@ -20,7 +20,7 @@ Options:
 
 Export contents:
   <output>/gitconfig.local
-  <output>/zshrc.local
+  <output>/zshrc.machine.local
   <output>/ssh/         (unless --no-ssh)
   <output>.tgz          (unless --no-archive)
 EOF
@@ -92,7 +92,7 @@ fi
 mkdir -p "$OUTPUT_DIR"
 
 copy_if_exists "$HOME/.gitconfig.local" "$OUTPUT_DIR/gitconfig.local"
-copy_if_exists "$HOME/.zshrc.local" "$OUTPUT_DIR/zshrc.local"
+copy_if_exists "$HOME/.zshrc.machine.local" "$OUTPUT_DIR/zshrc.machine.local"
 
 if [ "$INCLUDE_SSH" -eq 1 ]; then
     if [ -d "$HOME/.ssh" ]; then

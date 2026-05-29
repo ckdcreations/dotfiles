@@ -10,6 +10,7 @@ FORCE_RESET=0
 RUN_BOOTSTRAP=1
 INSTALL_BREW=0
 ENSURE_TOOLS=0
+INSTALL_NEW_SSH_KEYS=0
 
 usage() {
     cat <<'EOF'
@@ -26,6 +27,8 @@ Options:
   --no-bootstrap        Do not run ./bin/bootstrap after update
   --brew                Pass --brew to bootstrap (macOS Homebrew bundle)
   --ensure-tools        Run ./bin/cli-tools --install after update
+  --install-new-ssh-keys
+                       Generate and install newly missing managed SSH keys
   -h, --help            Show this help message
 
 Examples:
@@ -33,6 +36,8 @@ Examples:
   ./bin/update-dotfiles --branch main
   ./bin/update-dotfiles --hard
   ./bin/update-dotfiles --ensure-tools
+  updatedot
+  updatedot --install-new-ssh-keys
 EOF
 }
 
@@ -75,6 +80,10 @@ while [ "$#" -gt 0 ]; do
             ;;
         --ensure-tools)
             ENSURE_TOOLS=1
+            shift
+            ;;
+        --install-new-ssh-keys)
+            INSTALL_NEW_SSH_KEYS=1
             shift
             ;;
         -h|--help)
@@ -142,11 +151,18 @@ fi
 
 if [ "$RUN_BOOTSTRAP" -eq 1 ]; then
     log "Re-linking managed files with bootstrap..."
+    bootstrap_args=
     if [ "$INSTALL_BREW" -eq 1 ]; then
-        ./bin/bootstrap --brew
-    else
-        ./bin/bootstrap
+        bootstrap_args="$bootstrap_args --brew"
     fi
+    if [ "$INSTALL_NEW_SSH_KEYS" -eq 1 ]; then
+        bootstrap_args="$bootstrap_args --install-new-ssh-keys"
+    fi
+    # shellcheck disable=SC2086
+    ./bin/bootstrap $bootstrap_args
+elif [ "$INSTALL_NEW_SSH_KEYS" -eq 1 ]; then
+    log "Ensuring managed SSH keys..."
+    ./bin/ensure-managed-ssh --install-new-keys
 fi
 
 if [ "$ENSURE_TOOLS" -eq 1 ]; then

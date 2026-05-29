@@ -51,10 +51,10 @@ mkcd() {
     mkdir -p -- "$1" && cd -- "$1"
 }
 
-if [[ -o interactive ]] && [[ -z "${TMUX:-}" ]] && [[ "${TERM_PROGRAM:-}" == "Apple_Terminal" ]] && [[ "${COPILOT_TMUX_AUTO_START:-0}" == "1" ]] && command -v copilot-tmux-start >/dev/null 2>&1; then
-    exec copilot-tmux-start
-fi
-
 if [ -f "$HOME/.zshrc.local" ]; then
     . "$HOME/.zshrc.local"
+fi
+
+if [[ -o interactive ]] && [[ -z "${TMUX:-}" ]] && [[ "${TERM_PROGRAM:-}" == "Apple_Terminal" ]] && [[ "${COPILOT_TMUX_AUTO_START:-0}" == "1" ]] && command -v copilot-tmux-start >/dev/null 2>&1; then
+    exec copilot-tmux-start
 fi

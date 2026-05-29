@@ -8,6 +8,7 @@ INSTALL_BREW=0
 APPLY_MACOS_DEFAULTS=0
 RESTORE_DIR=
 FORCE_RESTORE=0
+INSTALL_NEW_SSH_KEYS=0
 
 usage() {
     cat <<'EOF'
@@ -18,11 +19,12 @@ Options:
   --macos-defaults          Apply macOS defaults after bootstrap
   --restore-local <dir>     Restore machine-local files from <dir>
   --force-restore           Overwrite existing local files when restoring
+  --install-new-ssh-keys    Install newly generated managed SSH keys on remotes
   -h, --help                Show this help message
 
 Restore directory format:
   <dir>/gitconfig.local
-  <dir>/zshrc.local
+  <dir>/zshrc.machine.local
   <dir>/ssh/   (optional, includes config and keys)
 EOF
 }
@@ -109,6 +111,10 @@ while [ "$#" -gt 0 ]; do
             FORCE_RESTORE=1
             shift
             ;;
+        --install-new-ssh-keys)
+            INSTALL_NEW_SSH_KEYS=1
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -126,11 +132,16 @@ if [ ! -x "$BOOTSTRAP_SCRIPT" ]; then
     exit 1
 fi
 
+bootstrap_args=
 if [ "$INSTALL_BREW" -eq 1 ]; then
-    "$BOOTSTRAP_SCRIPT" --brew
-else
-    "$BOOTSTRAP_SCRIPT"
+    bootstrap_args="$bootstrap_args --brew"
 fi
+if [ "$INSTALL_NEW_SSH_KEYS" -eq 1 ]; then
+    bootstrap_args="$bootstrap_args --install-new-ssh-keys"
+fi
+
+# shellcheck disable=SC2086
+"$BOOTSTRAP_SCRIPT" $bootstrap_args
 
 if [ -n "$RESTORE_DIR" ]; then
     if [ ! -d "$RESTORE_DIR" ]; then
@@ -139,7 +150,8 @@ if [ -n "$RESTORE_DIR" ]; then
     fi
 
     restore_file "$RESTORE_DIR/gitconfig.local" "$HOME/.gitconfig.local"
-    restore_file "$RESTORE_DIR/zshrc.local" "$HOME/.zshrc.local"
+    restore_file "$RESTORE_DIR/zshrc.machine.local" "$HOME/.zshrc.machine.local"
+    restore_file "$RESTORE_DIR/zshrc.local" "$HOME/.zshrc.machine.local"
     restore_ssh_dir "$RESTORE_DIR/ssh" "$HOME/.ssh"
 fi
 
@@ -156,7 +168,6 @@ log "Setup complete."
 log "Next: open a new terminal or run these commands in your current shell:"
 log "source ~/.zprofile"
 log "source ~/.zshrc"
-log "source ~/.zshrc.local"
 
 if command -v remoteConnect >/dev/null 2>&1; then
     log "remoteConnect is available now."

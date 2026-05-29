@@ -1,0 +1,216 @@
+#!/bin/sh
+
+set -eu
+
+DOTFILES_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+SSH_DIR=${SSH_DIR:-"$HOME/.ssh"}
+MANAGED_CONFIG="$DOTFILES_DIR/ssh/config"
+TARGET_CONFIG="$SSH_DIR/config"
+LOCAL_CONFIG_EXAMPLE="$DOTFILES_DIR/ssh/config.local.example"
+LOCAL_CONFIG="$SSH_DIR/config.local"
+STATE_HOME=${XDG_STATE_HOME:-"$HOME/.local/state"}
+BACKUP_ROOT="$STATE_HOME/dotfiles-backups"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+BACKUP_DIR="$BACKUP_ROOT/$TIMESTAMP"
+INSTALL_NEW_KEYS=0
+
+usage() {
+    cat <<'EOF'
+Usage: ./bin/ensure-managed-ssh [options]
+
+Links the managed SSH config from the dotfiles repo into ~/.ssh, creates
+machine-local SSH include files when missing, and generates any missing
+IdentityFile keypairs referenced by managed host aliases.
+
+Options:
+  --install-new-keys   Prompt to install any newly generated public keys on
+                       their matching remote hosts
+  -h, --help           Show this help message
+EOF
+}
+
+log() {
+    printf '%s\n' "$1"
+}
+
+fail() {
+    printf 'Error: %s\n' "$1" >&2
+    exit 1
+}
+
+backup_path() {
+    target=$1
+    if [ ! -e "$target" ] && [ ! -L "$target" ]; then
+        return 0
+    fi
+
+    relative=${target#"$HOME"/}
+    backup_target="$BACKUP_DIR/$relative"
+    mkdir -p "$(dirname -- "$backup_target")"
+    mv "$target" "$backup_target"
+    log "Backed up $target -> $backup_target"
+}
+
+link_file() {
+    source_file=$1
+    target_file=$2
+
+    if [ -L "$target_file" ] && [ "$(readlink "$target_file")" = "$source_file" ]; then
+        return 0
+    fi
+
+    if [ -e "$target_file" ] || [ -L "$target_file" ]; then
+        mkdir -p "$BACKUP_DIR"
+        backup_path "$target_file"
+    fi
+
+    mkdir -p "$(dirname -- "$target_file")"
+    ln -s "$source_file" "$target_file"
+    log "Linked $target_file -> $source_file"
+}
+
+ensure_local_config() {
+    if [ -f "$LOCAL_CONFIG" ]; then
+        chmod 600 "$LOCAL_CONFIG" 2>/dev/null || true
+        return 0
+    fi
+
+    cp "$LOCAL_CONFIG_EXAMPLE" "$LOCAL_CONFIG"
+    chmod 600 "$LOCAL_CONFIG" 2>/dev/null || true
+    log "Created $LOCAL_CONFIG from example"
+}
+
+managed_aliases() {
+    awk '
+        /^[[:space:]]*Host[[:space:]]+/ {
+            for (i = 2; i <= NF; i++) {
+                if ($i !~ /[*?]/) {
+                    print $i
+                }
+            }
+        }
+    ' "$MANAGED_CONFIG" | sort -u
+}
+
+expand_identity_path() {
+    identity_file=$1
+
+    case "$identity_file" in
+        "~/"*)
+            printf '%s\n' "$HOME/${identity_file#\~/}"
+            ;;
+        *)
+            printf '%s\n' "$identity_file"
+            ;;
+    esac
+}
+
+ensure_keypair() {
+    alias_name=$1
+    identity_file=$(ssh -G "$alias_name" | awk '/^identityfile / { print $2; exit }')
+    [ -n "$identity_file" ] || return 0
+
+    identity_file=$(expand_identity_path "$identity_file")
+
+    mkdir -p "$(dirname -- "$identity_file")"
+
+    if [ ! -f "$identity_file" ]; then
+        comment="${USER}@$(hostname)-${alias_name}"
+        ssh-keygen -q -t ed25519 -f "$identity_file" -N "" -C "$comment"
+        chmod 600 "$identity_file" 2>/dev/null || true
+        chmod 644 "$identity_file.pub" 2>/dev/null || true
+        log "Generated SSH key for $alias_name at $identity_file"
+        GENERATED_ALIASES="${GENERATED_ALIASES}${GENERATED_ALIASES:+
+}$alias_name|$identity_file"
+        return 0
+    fi
+
+    chmod 600 "$identity_file" 2>/dev/null || true
+    if [ ! -f "$identity_file.pub" ]; then
+        ssh-keygen -y -f "$identity_file" > "$identity_file.pub"
+        chmod 644 "$identity_file.pub" 2>/dev/null || true
+        log "Rebuilt public key for $alias_name at $identity_file.pub"
+    fi
+}
+
+install_new_key() {
+    alias_name=$1
+    identity_file=$2
+    public_key_file="$identity_file.pub"
+
+    if [ ! -f "$public_key_file" ]; then
+        fail "Missing public key for $alias_name: $public_key_file"
+    fi
+
+    if ssh -o BatchMode=yes -o ConnectTimeout=5 "$alias_name" true >/dev/null 2>&1; then
+        log "SSH already works for $alias_name; skipping key install"
+        return 0
+    fi
+
+    log "Installing new public key on $alias_name..."
+    if command -v ssh-copy-id >/dev/null 2>&1; then
+        ssh-copy-id -i "$public_key_file" "$alias_name"
+    else
+        cat "$public_key_file" | ssh "$alias_name" 'umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; cat >> ~/.ssh/authorized_keys'
+    fi
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --install-new-keys)
+            INSTALL_NEW_KEYS=1
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            fail "Unknown option: $1"
+            ;;
+    esac
+done
+
+[ -f "$MANAGED_CONFIG" ] || fail "Managed SSH config not found: $MANAGED_CONFIG"
+[ -f "$LOCAL_CONFIG_EXAMPLE" ] || fail "SSH local config example not found: $LOCAL_CONFIG_EXAMPLE"
+
+mkdir -p "$SSH_DIR"
+chmod 700 "$SSH_DIR"
+
+link_file "$MANAGED_CONFIG" "$TARGET_CONFIG"
+chmod 600 "$TARGET_CONFIG" 2>/dev/null || true
+ensure_local_config
+
+GENERATED_ALIASES=
+for alias_name in $(managed_aliases); do
+    ensure_keypair "$alias_name"
+done
+
+if [ -n "$GENERATED_ALIASES" ] && [ "$INSTALL_NEW_KEYS" -eq 1 ]; then
+    old_ifs=$IFS
+    IFS='
+'
+    for generated_entry in $GENERATED_ALIASES; do
+        IFS='|' read -r alias_name identity_file <<EOF
+$generated_entry
+EOF
+        install_new_key "$alias_name" "$identity_file"
+    done
+    IFS=$old_ifs
+fi
+
+if [ -n "$GENERATED_ALIASES" ] && [ "$INSTALL_NEW_KEYS" -ne 1 ]; then
+    log ""
+    log "Generated new SSH keys for managed aliases."
+    log "Install the new public keys on the remotes with:"
+    old_ifs=$IFS
+    IFS='
+'
+    for generated_entry in $GENERATED_ALIASES; do
+        IFS='|' read -r alias_name identity_file <<EOF
+$generated_entry
+EOF
+        log "  ssh-copy-id -i $identity_file.pub $alias_name"
+    done
+    IFS=$old_ifs
+fi
