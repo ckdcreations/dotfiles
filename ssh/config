@@ -45,3 +45,12 @@ Match originalhost ckdMacMini exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-sel
     HostName 100.97.179.166
 
 Include ~/.ssh/config.local
+
+# Server: Home Mesh Jump
+Host home-mesh-jump
+    HostName 100.84.135.105
+    User ckdcreations
+    Port 22
+    IdentityFile /Users/ckdcreations/.ssh/id_ed25519_home-mesh-jump
+    IdentitiesOnly yes
+    HostKeyAlias home-mesh-jump

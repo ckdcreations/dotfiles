@@ -4,7 +4,7 @@ alias ckdOldAsus='ssh ckdASUS'
 alias reload='source ~/.zprofile && source ~/.zshrc'
 
 # Auto-start tmux with Copilot left pane in Apple Terminal
-export COPILOT_TMUX_AUTO_START=1
+#export COPILOT_TMUX_AUTO_START=1
 
 # Created by remoteConnect
 alias ckdMSI='ssh ckdMSI'
@@ -18,3 +18,6 @@ alias ckdMacMini='ssh ckdMacMini'
 if [ -f "$HOME/.zshrc.machine.local" ]; then
     . "$HOME/.zshrc.machine.local"
 fi
+
+# Created by remoteConnect
+alias mesh="ssh home-mesh-jump"
