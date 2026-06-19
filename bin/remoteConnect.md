@@ -7,15 +7,15 @@ remoteConnect - interactive SSH bootstrap and managed host alias workflow
 ## SYNOPSIS
 
 ```sh
-remoteConnect [new|list|edit|delete|log|show]
+remoteConnect [new|list|edit|delete|tunnel|web|log|show]
 remoteConnect help
 ```
 
 ## DESCRIPTION
 
-remoteConnect creates and maintains SSH host entries in ~/.ssh/config, installs public keys for passwordless login, and optionally creates shell aliases in ~/.zshrc.local.
+remoteConnect creates and maintains SSH host entries in ~/.ssh/config, installs public keys for passwordless login, and optionally creates shell functions in ~/.zshrc.local.
 
-The command supports interactive setup for new hosts and management commands for listing, editing, deleting, and viewing logs for remoteConnect-managed entries.
+The command supports interactive setup for new hosts and management commands for listing, editing, deleting, tunneling, and viewing logs for remoteConnect-managed entries.
 
 ## COMMANDS
 
@@ -35,6 +35,8 @@ Prompts for:
 - local private key path (default: ~/.ssh/id_ed25519_ALIAS)
 
 If key material does not exist, remoteConnect creates an ed25519 keypair.
+
+The generated shell helper can be invoked as a normal command for SSH access and a `tunnel` subcommand for same-host browser tunnels. For mesh-only web apps, use the `web` command with the mesh gateway alias.
 
 Key installation behavior:
 
@@ -64,6 +66,24 @@ remoteConnect edit <alias>
 ```
 
 Prompts with current values and rewrites the managed host block so user, port, identity path, host addresses, and optional gateway route remain synchronized.
+
+### tunnel
+
+Opens a local browser tunnel through a managed SSH host.
+
+```sh
+remoteConnect tunnel proxmox 8006
+```
+
+### web
+
+Opens a browser tunnel through a mesh gateway to any LAN host reachable from that gateway.
+
+```sh
+remoteConnect web home-mesh-jump 192.168.1.160 8096
+```
+
+The command opens `http://localhost:8096` by default, or `https://localhost:<port>` for common HTTPS ports such as 443, 8443, 9443, and 8006.
 
 ### delete
 
@@ -97,11 +117,16 @@ Prints usage and command help.
   ```
 
 - ~/.zshrc.local
-  Optional shell alias blocks are added as:
+  Optional shell function blocks are added as:
 
   ```text
   # Created by remoteConnect
-  alias ALIAS_NAME="ssh HOST_ALIAS"
+  ALIAS_NAME() {
+    case "${1:-}" in
+      tunnel) shift; remoteConnect tunnel HOST_ALIAS "$@" ;;
+      *)      ssh HOST_ALIAS "$@" ;;
+    esac
+  }
   ```
 
 - ${XDG_STATE_HOME:-~/.local/state}/remoteConnect/remoteConnect.log
@@ -128,6 +153,11 @@ Optional gateway routing:
 - if mesh gateway alias is supplied, the managed host entry includes ProxyJump GATEWAY_ALIAS
 - key bootstrap also uses ProxyJump when a gateway is configured
 
+Browser tunnel routing:
+
+- `remoteConnect web` forwards a local browser port to a LAN target host and opens the page automatically.
+- Local service shortcuts such as `proxmox-ui`, `jellyfin`, `immich`, `filebrowser`, and `cliffbooks` are stored in `~/.zshrc.local`.
+
 ## EXIT STATUS
 
 - 0: success
@@ -152,6 +182,18 @@ Edit one alias directly:
 
 ```sh
 remoteConnect edit proxmox
+```
+
+Open a Proxmox web tunnel:
+
+```sh
+remoteConnect tunnel proxmox 8006
+```
+
+Open a LAN web UI through the mesh gateway:
+
+```sh
+remoteConnect web home-mesh-jump 192.168.1.18 3000
 ```
 
 Delete an alias:

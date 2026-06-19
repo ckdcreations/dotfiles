@@ -30,6 +30,57 @@ Host proxmox
     IdentitiesOnly yes
     HostKeyAlias proxmox
 
+Match originalhost proxmox exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-select-host' 'mesh' '192.168.1.143' 'home-mesh-jump' '22'"
+    ProxyJump home-mesh-jump
+
+# Server: Jellyfin Web UI
+Host jellyfin
+    HostName 192.168.1.160
+    User ckdcreations
+    Port 22
+    IdentityFile /Users/ckdcreations/.ssh/id_ed25519_home-mesh-jump
+    IdentitiesOnly yes
+    HostKeyAlias jellyfin
+
+Match originalhost jellyfin exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-select-host' 'mesh' '192.168.1.160' 'home-mesh-jump' '22'"
+    ProxyJump home-mesh-jump
+
+# Server: Immich Web UI
+Host immich
+    HostName 192.168.1.152
+    User ckdcreations
+    Port 22
+    IdentityFile /Users/ckdcreations/.ssh/id_ed25519_home-mesh-jump
+    IdentitiesOnly yes
+    HostKeyAlias immich
+
+Match originalhost immich exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-select-host' 'mesh' '192.168.1.152' 'home-mesh-jump' '22'"
+    ProxyJump home-mesh-jump
+
+# Server: File Browser Web UI
+Host filebrowser
+    HostName 192.168.1.80
+    User ckdcreations
+    Port 22
+    IdentityFile /Users/ckdcreations/.ssh/id_ed25519_home-mesh-jump
+    IdentitiesOnly yes
+    HostKeyAlias filebrowser
+
+Match originalhost filebrowser exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-select-host' 'mesh' '192.168.1.80' 'home-mesh-jump' '22'"
+    ProxyJump home-mesh-jump
+
+# Server: CliffBooks Web UI
+Host cliffbooks
+    HostName 192.168.1.18
+    User ckdcreations
+    Port 22
+    IdentityFile /Users/ckdcreations/.ssh/id_ed25519_home-mesh-jump
+    IdentitiesOnly yes
+    HostKeyAlias cliffbooks
+
+Match originalhost cliffbooks exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-select-host' 'mesh' '192.168.1.18' 'home-mesh-jump' '22'"
+    ProxyJump home-mesh-jump
+
 # Server: ckdCreations Mac Mini
 Host ckdMacMini
     User ckdcreations
@@ -44,8 +95,6 @@ Match originalhost ckdMacMini exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-sel
 Match originalhost ckdMacMini exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-select-host' 'mesh' '192.168.1.226' '100.97.179.166' '22'"
     HostName 100.97.179.166
 
-Include ~/.ssh/config.local
-
 # Server: Home Mesh Jump
 Host home-mesh-jump
     HostName 100.84.135.105
@@ -54,3 +103,5 @@ Host home-mesh-jump
     IdentityFile /Users/ckdcreations/.ssh/id_ed25519_home-mesh-jump
     IdentitiesOnly yes
     HostKeyAlias home-mesh-jump
+
+Include ~/.ssh/config.local

@@ -3,6 +3,34 @@ alias ckdASUS='ssh ckdASUS'
 alias ckdOldAsus='ssh ckdASUS'
 alias reload='source ~/.zprofile && source ~/.zshrc'
 
+# Allow remoteConnect host selection to fall back on SSH reachability when ICMP
+# ping is blocked (common for mesh/VPN endpoints).
+export SSH_SELECT_REQUIRE_PING=0
+
+# Browser-friendly mesh web UI shortcuts.
+# Each helper opens a local tunnel through home-mesh-jump and launches the page.
+proxmox_ui() {
+    remoteConnect web home-mesh-jump 192.168.1.143 8006
+}
+
+alias proxmox-ui='proxmox_ui'
+
+jellyfin() {
+    remoteConnect web home-mesh-jump 192.168.1.160 8096
+}
+
+immich() {
+    remoteConnect web home-mesh-jump 192.168.1.152 2283
+}
+
+filebrowser() {
+    remoteConnect web home-mesh-jump 192.168.1.80 8080
+}
+
+cliffbooks() {
+    remoteConnect web home-mesh-jump 192.168.1.18 3000
+}
+
 # Auto-start tmux with Copilot left pane in Apple Terminal
 #export COPILOT_TMUX_AUTO_START=1
 

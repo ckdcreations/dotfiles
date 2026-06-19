@@ -11,11 +11,25 @@ Portable shell, git, and machine setup for macOS and other UNIX-like systems.
 - `bin/bootstrap` to install symlinks with backups
 - `bin/update-system` to update common package managers
 - `bin/macos-defaults` for optional macOS preferences
-- `bin/remoteConnect` to set up passwordless SSH host aliases
+- `bin/remoteConnect` to set up passwordless SSH host aliases and browser tunnels through the mesh jump host
 - `bin/github-auth-setup` to configure GitHub CLI auth and git protocol
 - `bin/github-create-repo` to create and publish repos from local git
 
 Script details are documented in `bin/README.md`.
+
+## Mesh service shortcuts
+
+This machine keeps local web UI shortcuts in `~/.zshrc.local` for services that live on the home mesh:
+
+```sh
+proxmox-ui   # Proxmox web UI at 192.168.1.143:8006
+jellyfin     # Jellyfin at 192.168.1.160:8096
+immich       # Immich at 192.168.1.152:2283
+filebrowser  # File Browser at 192.168.1.80:8080
+cliffbooks   # CliffBooks at 192.168.1.18:3000
+```
+
+Each shortcut opens a local browser tunnel through `home-mesh-jump`. The command names are defined in `shell/zshrc.local`, and the underlying tunnel runner lives in `bin/remoteConnect`.
 
 Machine-local config stays outside version control:
 

@@ -2,6 +2,38 @@
 
 This directory contains helper scripts for bootstrapping and maintaining your machine.
 
+## remoteConnect
+
+Path: `bin/remoteConnect`
+
+Purpose:
+- Creates and maintains SSH host aliases in `~/.ssh/config`.
+- Installs public keys for passwordless login when needed.
+- Can create shell functions in `~/.zshrc.local` for quick SSH access.
+- Opens browser tunnels through a mesh gateway for LAN services.
+
+Usage:
+
+```sh
+remoteConnect [new|list|edit|delete|tunnel|web|log|show]
+remoteConnect help
+```
+
+Useful commands:
+
+```sh
+remoteConnect new
+remoteConnect list --commands
+remoteConnect edit proxmox
+remoteConnect tunnel proxmox 8006
+remoteConnect web home-mesh-jump 192.168.1.143 8006
+```
+
+Notes:
+- `tunnel` is for SSH-managed hosts where the web UI lives on the same machine as the SSH alias.
+- `web` is for LAN services reached through `home-mesh-jump`.
+- The local command names for the common services are stored in `~/.zshrc.local`.
+
 ## updatedot
 
 Path: `bin/updatedot`

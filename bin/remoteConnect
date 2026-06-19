@@ -15,17 +15,19 @@ TAB_CHAR=$(printf '\t')
 usage() {
     cat <<'EOF'
 Usage:
-    remoteConnect [new|list|edit|delete|log|show]
+    remoteConnect [new|list|edit|delete|tunnel|web|log|show]
   remoteConnect help
 
 Commands:
-  new   Interactive setup for a new remote host (default)
-    list  Show remoteConnect-managed hosts and shell aliases (use --commands for full command view)
-    edit  Update an existing remoteConnect-managed host (supports: remoteConnect edit <alias>)
+  new     Interactive setup for a new remote host (default)
+  list    Show remoteConnect-managed hosts and shell aliases (use --commands for full command view)
+  edit    Update an existing remoteConnect-managed host (supports: remoteConnect edit <alias>)
   delete  Remove an existing remoteConnect-managed host
-    log   Show recent remoteConnect log entries (supports -t N)
-    show  Alias for log
-  help  Show this help text
+  tunnel  Forward a remote service port to localhost (supports: remoteConnect tunnel <alias> [port] [local-port])
+    web     Forward a LAN web UI through a mesh gateway and open it in the browser (supports: remoteConnect web <gateway-alias> <target-host> <remote-port> [local-port])
+  log     Show recent remoteConnect log entries (supports -t N)
+  show    Alias for log
+  help    Show this help text
 EOF
 }
 
@@ -166,7 +168,7 @@ host_alias_exists() {
 alias_cmd_exists() {
     alias_name=$1
     [ -f "$LOCAL_ALIASES_FILE" ] || return 1
-    grep -Eq "^[[:space:]]*alias[[:space:]]+$alias_name=" "$LOCAL_ALIASES_FILE"
+    grep -Eq "^[[:space:]]*(alias[[:space:]]+$alias_name=|$alias_name\(\))" "$LOCAL_ALIASES_FILE"
 }
 
 is_generated_config_file() {
@@ -178,7 +180,7 @@ is_generated_config_file() {
 generated_aliases_have_shell_alias() {
     alias_name=$1
     [ -f "$LOCAL_ALIASES_FILE" ] || return 1
-    grep -Fq "alias $alias_name=\"ssh $alias_name\"" "$LOCAL_ALIASES_FILE"
+    grep -Eq "(alias $alias_name=\"ssh $alias_name\"|^$alias_name\(\))" "$LOCAL_ALIASES_FILE"
 }
 
 extract_generated_hosts() {
@@ -419,7 +421,9 @@ remove_shell_alias() {
 
         {
             block = block $0 "\n"
-            if ($0 == "alias " alias_name "=\"ssh " alias_name "\"") {
+            # Match new function format and old alias format (single or double quotes)
+            if ($0 == alias_name "() {" || \
+                (index($0, "alias " alias_name "=") == 1 && index($0, "ssh " alias_name) > 0)) {
                 keep_block = 0
             }
         }
@@ -614,25 +618,46 @@ create_ssh_host_entry() {
         default_host=$mesh_host
     fi
 
-    local_match_cmd=$(build_match_exec_command local "$local_host" "$mesh_host" "$port")
-    mesh_match_cmd=$(build_match_exec_command mesh "$local_host" "$mesh_host" "$port")
+    # Conditional ProxyJump mode: gateway + a local host IP, no separate mesh IP.
+    # The gateway is applied via a Match block only when the local host is unreachable,
+    # so direct LAN connections are never routed through the jump unnecessarily.
+    use_conditional_proxy=0
+    if [ -n "$gateway_alias" ] && [ -n "$local_host" ] && [ -z "$mesh_host" ]; then
+        use_conditional_proxy=1
+    fi
 
     {
         printf '\n# Server: %s\n' "$server_name"
         printf 'Host %s\n' "$alias_name"
-        if [ -z "$local_host" ] || [ -z "$mesh_host" ]; then
+
+        if [ "$use_conditional_proxy" -eq 1 ]; then
+            # HostName is always the LAN IP; the Match block adds ProxyJump when needed.
+            printf '    HostName %s\n' "$local_host"
+        elif [ -z "$local_host" ] || [ -z "$mesh_host" ]; then
             printf '    HostName %s\n' "$default_host"
         fi
+        # When both local_host and mesh_host are set (no gateway), HostName is set by Match blocks below.
+
         printf '    User %s\n' "$remote_user"
         printf '    Port %s\n' "$port"
         printf '    IdentityFile %s\n' "$key_file"
         printf '    IdentitiesOnly yes\n'
         printf '    HostKeyAlias %s\n' "$alias_name"
-        if [ -n "$gateway_alias" ]; then
+
+        # Static ProxyJump only when there is no local-first fallback (always via gateway).
+        if [ -n "$gateway_alias" ] && [ "$use_conditional_proxy" -eq 0 ]; then
             printf '    ProxyJump %s\n' "$gateway_alias"
         fi
 
-        if [ -n "$local_host" ] && [ -n "$mesh_host" ]; then
+        if [ "$use_conditional_proxy" -eq 1 ]; then
+            # Activate ProxyJump through the gateway only when the local host is unreachable.
+            mesh_match_cmd=$(build_match_exec_command mesh "$local_host" "$gateway_alias" "$port")
+            printf '\nMatch originalhost %s exec %s\n' "$alias_name" "$mesh_match_cmd"
+            printf '    ProxyJump %s\n' "$gateway_alias"
+        elif [ -n "$local_host" ] && [ -n "$mesh_host" ]; then
+            # No gateway: switch HostName between local and mesh IPs.
+            local_match_cmd=$(build_match_exec_command local "$local_host" "$mesh_host" "$port")
+            mesh_match_cmd=$(build_match_exec_command mesh "$local_host" "$mesh_host" "$port")
             printf '\nMatch originalhost %s exec %s\n' "$alias_name" "$local_match_cmd"
             printf '    HostName %s\n' "$local_host"
             printf '\nMatch originalhost %s exec %s\n' "$alias_name" "$mesh_match_cmd"
@@ -693,10 +718,10 @@ edit_generated_alias() {
     remove_config_block_by_alias "$existing_alias"
     create_ssh_host_entry "$SERVER_NAME" "$existing_alias" "$LOCAL_HOST" "$MESH_HOST" "$REMOTE_USER" "$SSH_PORT" "$KEY_FILE" "$GATEWAY_ALIAS"
 
-    if [ -f "$LOCAL_ALIASES_FILE" ] && grep -Fq "alias $existing_alias=\"ssh $existing_alias\"" "$LOCAL_ALIASES_FILE"; then
-        remove_shell_alias "$existing_alias"
-        create_shell_alias "$existing_alias" "$existing_alias"
-    fi
+    # Always keep the shell alias in sync with the SSH alias after an edit.
+    remove_shell_alias "$existing_alias"
+    create_shell_alias "$existing_alias" "$existing_alias"
+    reload_local_aliases_if_possible
 
     log_msg INFO "Updated alias $existing_alias"
     printf 'Updated alias: %s\n' "$existing_alias"
@@ -773,10 +798,15 @@ create_shell_alias() {
 
     {
         printf '\n# Created by remoteConnect\n'
-        printf 'alias %s="ssh %s"\n' "$alias_cmd" "$ssh_alias"
+        printf '%s() {\n' "$alias_cmd"
+        printf '  case "${1:-}" in\n'
+        printf '    tunnel) shift; remoteConnect tunnel %s "$@" ;;\n' "$ssh_alias"
+        printf '    *)      ssh %s "$@" ;;\n' "$ssh_alias"
+        printf '  esac\n'
+        printf '}\n'
     } >> "$LOCAL_ALIASES_FILE"
 
-    printf 'Added shell alias: %s -> ssh %s\n' "$alias_cmd" "$ssh_alias"
+    printf 'Added shell function: %s  (tip: "%s tunnel [port]" to open a web UI)\n' "$alias_cmd" "$alias_cmd"
 }
 
 reload_local_aliases_if_possible() {
@@ -931,7 +961,7 @@ new_setup() {
     printf '\nSSH host alias created.\n'
     printf 'Connect with: ssh %s\n' "$SSH_ALIAS"
 
-    if confirm_yes_no 'Create a shell alias command for quick connect (alias <name>="ssh <host>")?'; then
+    if confirm_yes_no 'Create a shell command for quick connect (supports: <name> tunnel [port])?'; then
         while :; do
             prompt_required 'Shell alias command name: ' ALIAS_CMD
             if validate_alias_name "$ALIAS_CMD"; then
@@ -949,6 +979,93 @@ new_setup() {
     fi
 
     printf 'Done.\n'
+}
+
+tunnel_alias() {
+    alias_name=${1:-}
+    remote_port=${2:-}
+    local_port=${3:-}
+
+    ensure_ssh_dir
+
+    if [ -z "$alias_name" ]; then
+        list_generated_aliases
+        printf '\n'
+        prompt_required 'SSH alias to tunnel: ' alias_name
+    fi
+
+    if ! host_alias_exists "$alias_name"; then
+        printf 'Alias "%s" not found in %s.\n' "$alias_name" "$CONFIG_FILE"
+        log_msg ERROR "tunnel: alias $alias_name not found"
+        exit 1
+    fi
+
+    if [ -z "$remote_port" ]; then
+        printf 'Common ports: 8006 (Proxmox), 8096 (Jellyfin), 2283 (Immich), 80 (HTTP), 443 (HTTPS)\n'
+        prompt_required 'Remote service port: ' remote_port
+    fi
+
+    : "${local_port:=$remote_port}"
+
+    scheme="http"
+    case "$remote_port" in
+        443|8006|8443|9443) scheme="https" ;;
+    esac
+
+    url="${scheme}://localhost:${local_port}"
+
+    log_msg INFO "Opening tunnel: $alias_name port $remote_port -> localhost:$local_port"
+    printf 'Tunneling %s:%s -> %s\n' "$alias_name" "$remote_port" "$url"
+    printf 'Press Ctrl-C to stop.\n\n'
+
+    if command -v open >/dev/null 2>&1; then
+        (sleep 2 && open "$url") &
+    elif command -v xdg-open >/dev/null 2>&1; then
+        (sleep 2 && xdg-open "$url") &
+    fi
+
+    ssh -N -L "${local_port}:localhost:${remote_port}" "$alias_name"
+}
+
+web_tunnel() {
+    gateway_alias=${1:-}
+    target_host=${2:-}
+    remote_port=${3:-}
+    local_port=${4:-}
+
+    ensure_ssh_dir
+
+    if [ -z "$gateway_alias" ] || [ -z "$target_host" ] || [ -z "$remote_port" ]; then
+        printf 'Usage: remoteConnect web <gateway-alias> <target-host> <remote-port> [local-port]\n' >&2
+        exit 2
+    fi
+
+    if ! host_alias_exists "$gateway_alias"; then
+        printf 'Gateway alias "%s" not found in %s.\n' "$gateway_alias" "$CONFIG_FILE"
+        log_msg ERROR "web: gateway alias $gateway_alias not found"
+        exit 1
+    fi
+
+    : "${local_port:=$remote_port}"
+
+    scheme="http"
+    case "$remote_port" in
+        443|8443|9443|8006) scheme="https" ;;
+    esac
+
+    url="${scheme}://localhost:${local_port}"
+
+    log_msg INFO "Opening web tunnel: $gateway_alias -> $target_host:$remote_port on localhost:$local_port"
+    printf 'Tunneling via %s to %s:%s -> %s\n' "$gateway_alias" "$target_host" "$remote_port" "$url"
+    printf 'Press Ctrl-C to stop.\n\n'
+
+    if command -v open >/dev/null 2>&1; then
+        (sleep 2 && open "$url") &
+    elif command -v xdg-open >/dev/null 2>&1; then
+        (sleep 2 && xdg-open "$url") &
+    fi
+
+    ssh -N -L "${local_port}:${target_host}:${remote_port}" "$gateway_alias"
 }
 
 main() {
@@ -970,6 +1087,12 @@ main() {
             ;;
         edit)
             edit_generated_alias "${2:-}"
+            ;;
+        tunnel)
+            tunnel_alias "${2:-}" "${3:-}" "${4:-}"
+            ;;
+        web)
+            web_tunnel "${2:-}" "${3:-}" "${4:-}" "${5:-}"
             ;;
         delete)
             delete_generated_alias
