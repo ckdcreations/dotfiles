@@ -34,6 +34,16 @@ Notes:
 - `web` is for LAN services reached through `home-mesh-jump`.
 - The local command names for the common services are stored in `~/.zshrc.local`.
 
+Proxy and mesh setup guide:
+- Local-only host: set local host, leave secondary and gateway empty.
+- Mesh-only host: set secondary host, leave local and gateway empty.
+- Local-first + mesh fallback: set local and secondary, leave gateway empty.
+- ProxyJump through mesh gateway: set local host and set gateway alias (for example `home-mesh-jump`).
+
+Tunnel guide:
+- Same-host service port: `remoteConnect tunnel <alias> <port>`
+- Any LAN service through jump: `remoteConnect web home-mesh-jump <target-ip> <port>`
+
 ## updatedot
 
 Path: `bin/updatedot`

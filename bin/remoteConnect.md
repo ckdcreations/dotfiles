@@ -158,6 +158,61 @@ Browser tunnel routing:
 - `remoteConnect web` forwards a local browser port to a LAN target host and opens the page automatically.
 - Local service shortcuts such as `proxmox-ui`, `jellyfin`, `immich`, `filebrowser`, and `cliffbooks` are stored in `~/.zshrc.local`.
 
+## HOW TO CONFIGURE LOCAL, MESH, PROXY, AND TUNNELS
+
+Use this workflow when adding or editing hosts:
+
+1. Start with `remoteConnect new` (or `remoteConnect edit <alias>`).
+2. Decide where the host is reachable from:
+   - Local-only host:
+     - Set `Local network host` to the LAN IP.
+     - Leave `Secondary remote/VPN host` empty.
+     - Leave `Mesh gateway alias` empty.
+   - Mesh/VPN-only host (direct):
+     - Leave `Local network host` empty.
+     - Set `Secondary remote/VPN host` to the mesh/VPN IP.
+     - Leave `Mesh gateway alias` empty.
+   - Local-first with mesh fallback host:
+     - Set both `Local network host` and `Secondary remote/VPN host`.
+     - Leave `Mesh gateway alias` empty.
+     - Result: generated `Match` rules pick local first, then secondary when local is not reachable.
+   - ProxyJump gateway host (mesh jump):
+     - Set `Local network host` to the target LAN IP.
+     - Set `Mesh gateway alias` to your jump alias (for example `home-mesh-jump`).
+     - Leave `Secondary remote/VPN host` empty.
+     - Result: target host stays local-first, but adds `ProxyJump` when local path is unavailable.
+
+Routing probe defaults:
+
+- Host selection checks ping first for speed.
+- If ping is blocked, it falls back to quick SSH probing.
+- Environment controls:
+  - `SSH_SELECT_REQUIRE_PING=1` (default)
+  - `SSH_SELECT_PING_FALLBACK=1` (default)
+
+### Tunnel choices
+
+- Same-host web UI (service runs on the same host as SSH alias):
+
+  ```sh
+  remoteConnect tunnel proxmox 8006
+  ```
+
+- Any LAN web service through mesh gateway (service does not need its own SSH alias):
+
+  ```sh
+  remoteConnect web home-mesh-jump 192.168.1.160 8096
+  remoteConnect web home-mesh-jump 192.168.1.152 2283
+  remoteConnect web home-mesh-jump 192.168.1.80 8080
+  remoteConnect web home-mesh-jump 192.168.1.18 3000
+  ```
+
+Common behavior:
+
+- Tunnel keeps the terminal session open until `Ctrl-C`.
+- Browser is auto-opened to `http://localhost:<port>` or `https://localhost:<port>` for common HTTPS ports.
+- Use another terminal tab/window for regular SSH while a tunnel is active.
+
 ## EXIT STATUS
 
 - 0: success
