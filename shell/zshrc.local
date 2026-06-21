@@ -5,7 +5,8 @@ alias reload='source ~/.zprofile && source ~/.zshrc'
 
 # Allow remoteConnect host selection to fall back on SSH reachability when ICMP
 # ping is blocked (common for mesh/VPN endpoints).
-export SSH_SELECT_REQUIRE_PING=0
+export SSH_SELECT_REQUIRE_PING=1
+export SSH_SELECT_PING_FALLBACK=1
 
 # Browser-friendly mesh web UI shortcuts.
 # Each helper opens a local tunnel through home-mesh-jump and launches the page.

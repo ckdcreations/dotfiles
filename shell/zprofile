@@ -8,9 +8,27 @@ export DOTFILES="$HOME/dotfiles"
 export PATH="$DOTFILES/bin:$HOME/.local/bin:$HOME/bin:$PATH"
 
 if [[ -o login && -o interactive && -x "$DOTFILES/bin/updatedot" ]]; then
-    _updatedot_output="$($DOTFILES/bin/updatedot 2>&1 || true)"
-    if [ -n "$_updatedot_output" ]; then
-        printf '%s\n' "$_updatedot_output"
+    _updatedot_state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles"
+    _updatedot_stamp="$_updatedot_state_dir/updatedot-last-run"
+    _updatedot_today="$(date +%Y-%m-%d)"
+    _run_updatedot=1
+
+    mkdir -p "$_updatedot_state_dir"
+
+    if [ -f "$_updatedot_stamp" ]; then
+        IFS= read -r _updatedot_last_run < "$_updatedot_stamp" || _updatedot_last_run=""
+        if [ "$_updatedot_last_run" = "$_updatedot_today" ]; then
+            _run_updatedot=0
+        fi
+    fi
+
+    _updatedot_output=""
+    if [ "$_run_updatedot" -eq 1 ]; then
+        _updatedot_output="$($DOTFILES/bin/updatedot 2>&1 || true)"
+        printf '%s\n' "$_updatedot_today" > "$_updatedot_stamp"
+        if [ -n "$_updatedot_output" ]; then
+            printf '%s\n' "$_updatedot_output"
+        fi
     fi
 
     case "$_updatedot_output" in

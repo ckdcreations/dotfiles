@@ -13,6 +13,7 @@ MESH_HOST=$3
 PORT=$4
 SSH_PROBE_TIMEOUT=${SSH_PROBE_TIMEOUT:-3}
 PING_REQUIRE=${SSH_SELECT_REQUIRE_PING:-1}
+PING_FALLBACK=${SSH_SELECT_PING_FALLBACK:-1}
 PING_COUNT=${SSH_SELECT_PING_COUNT:-1}
 
 case "$(uname -s)" in
@@ -36,11 +37,14 @@ is_ssh_reachable() {
     printf 'Checking %s... ' "$host_name" >&2
 
     # Optional pre-check: ping before any SSH attempt.
-    # Set SSH_SELECT_REQUIRE_PING=0 when ICMP is blocked but SSH is allowed.
+    # With SSH_SELECT_PING_FALLBACK=1 (default), a ping miss still tries SSH probes.
     if [ "$PING_REQUIRE" = "1" ]; then
         if ! ping -n -c "$PING_COUNT" -W "$PING_WAIT" "$host_name" >/dev/null 2>&1; then
-            printf 'unreachable (no ping)\n' >&2
-            return 1
+            if [ "$PING_FALLBACK" != "1" ]; then
+                printf 'unreachable (no ping)\n' >&2
+                return 1
+            fi
+            printf 'no ping, probing ssh... ' >&2
         fi
     fi
 
