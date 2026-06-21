@@ -50,3 +50,11 @@ fi
 
 # Created by remoteConnect
 alias mesh="ssh home-mesh-jump"
+
+# Created by remoteConnect
+minecraft() {
+  case "${1:-}" in
+    tunnel) shift; remoteConnect tunnel minecraft "$@" ;;
+    *)      ssh minecraft "$@" ;;
+  esac
+}

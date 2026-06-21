@@ -105,3 +105,15 @@ Host home-mesh-jump
     HostKeyAlias home-mesh-jump
 
 Include ~/.ssh/config.local
+
+# Server: Minecraft Server
+Host minecraft
+    HostName 192.168.1.141
+    User minecraft
+    Port 22
+    IdentityFile /Users/ckdcreations/.ssh/id_ed25519_minecraft
+    IdentitiesOnly yes
+    HostKeyAlias minecraft
+
+Match originalhost minecraft exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-select-host' 'mesh' '192.168.1.141' 'home-mesh-jump' '22'"
+    ProxyJump home-mesh-jump
