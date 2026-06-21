@@ -305,11 +305,27 @@ load_alias_details() {
             next
         }
 
-        in_target == 1 && /^Match host / {
-            if (index($0, " local ") > 0) {
-                expect="local"
-            } else if (index($0, " mesh ") > 0) {
-                expect="mesh"
+        in_target == 1 && /^Match[[:space:]]+(host|originalhost)[[:space:]]+/ {
+            if (index($0, "ssh-select-host") > 0) {
+                split($0, q, "\047")
+                mode=q[4]
+                parsed_local=q[6]
+                parsed_mesh=q[8]
+
+                if (parsed_local != "") {
+                    local_host=parsed_local
+                }
+                if (parsed_mesh != "") {
+                    mesh_host=parsed_mesh
+                }
+
+                if (mode == "local") {
+                    expect="local"
+                } else if (mode == "mesh") {
+                    expect="mesh"
+                } else {
+                    expect=""
+                }
             }
             next
         }
@@ -328,6 +344,14 @@ load_alias_details() {
     IFS="$TAB_CHAR" read -r ALIAS_SERVER_NAME ALIAS_NAME ALIAS_BASE_HOST ALIAS_USER ALIAS_PORT ALIAS_IDENTITY ALIAS_LOCAL_HOST ALIAS_MESH_HOST ALIAS_GATEWAY <<EOF
 $details
 EOF
+
+    # For local host + ProxyJump configurations, the Match exec stores the gateway
+    # alias in the third ssh-select-host argument. Keep that value in gateway only,
+    # and keep local_host pointed at the actual LAN target.
+    if [ -n "$ALIAS_GATEWAY" ] && [ "$ALIAS_MESH_HOST" = "$ALIAS_GATEWAY" ] && [ -n "$ALIAS_BASE_HOST" ]; then
+        ALIAS_LOCAL_HOST=$ALIAS_BASE_HOST
+        ALIAS_MESH_HOST=
+    fi
 
     if [ -z "$ALIAS_LOCAL_HOST" ] && [ -z "$ALIAS_MESH_HOST" ]; then
         ALIAS_LOCAL_HOST=$ALIAS_BASE_HOST
@@ -360,7 +384,7 @@ show_alias_commands() {
     fi
 
     if generated_aliases_have_shell_alias "$alias_name"; then
-        printf '  shell alias: alias %s="ssh %s"\n' "$alias_name" "$alias_name"
+        printf '  shell helper: %s (ssh + tunnel subcommand)\n' "$alias_name"
     fi
 }
 
@@ -490,6 +514,19 @@ select_generated_alias() {
 
 shell_single_quote() {
     printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\''/g")"
+}
+
+find_free_local_port() {
+    preferred=$1
+    port=$preferred
+    while [ "$port" -le "$((preferred + 20))" ]; do
+        if ! lsof -i "tcp:$port" -sTCP:LISTEN >/dev/null 2>&1; then
+            printf '%s' "$port"
+            return 0
+        fi
+        port=$((port + 1))
+    done
+    printf '%s' "$preferred"
 }
 
 build_match_exec_command() {
@@ -1006,6 +1043,7 @@ tunnel_alias() {
     fi
 
     : "${local_port:=$remote_port}"
+    local_port=$(find_free_local_port "$local_port")
 
     scheme="http"
     case "$remote_port" in
@@ -1047,6 +1085,7 @@ web_tunnel() {
     fi
 
     : "${local_port:=$remote_port}"
+    local_port=$(find_free_local_port "$local_port")
 
     scheme="http"
     case "$remote_port" in
