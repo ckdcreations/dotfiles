@@ -72,9 +72,9 @@ Match originalhost filebrowser exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-se
 # Server: CliffBooks Web UI
 Host cliffbooks
     HostName 192.168.1.18
-    User ckdcreations
+    User root
     Port 22
-    IdentityFile /Users/ckdcreations/.ssh/id_ed25519_home-mesh-jump
+    IdentityFile /Users/ckdcreations/.ssh/id_ed25519_cliffbooks
     IdentitiesOnly yes
     HostKeyAlias cliffbooks
 
