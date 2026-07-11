@@ -36,9 +36,9 @@ Match originalhost proxmox exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-select
 # Server: Jellyfin Web UI
 Host jellyfin
     HostName 192.168.1.160
-    User ckdcreations
+    User root
     Port 22
-    IdentityFile /Users/ckdcreations/.ssh/id_ed25519_home-mesh-jump
+    IdentityFile /Users/ckdcreations/.ssh/id_ed25519_jellyfin
     IdentitiesOnly yes
     HostKeyAlias jellyfin
 
@@ -48,9 +48,9 @@ Match originalhost jellyfin exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-selec
 # Server: Immich Web UI
 Host immich
     HostName 192.168.1.152
-    User ckdcreations
+    User root
     Port 22
-    IdentityFile /Users/ckdcreations/.ssh/id_ed25519_home-mesh-jump
+    IdentityFile /Users/ckdcreations/.ssh/id_ed25519_immich
     IdentitiesOnly yes
     HostKeyAlias immich
 
@@ -60,9 +60,9 @@ Match originalhost immich exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-select-
 # Server: File Browser Web UI
 Host filebrowser
     HostName 192.168.1.80
-    User ckdcreations
+    User root
     Port 22
-    IdentityFile /Users/ckdcreations/.ssh/id_ed25519_home-mesh-jump
+    IdentityFile /Users/ckdcreations/.ssh/id_ed25519_filebrowser
     IdentitiesOnly yes
     HostKeyAlias filebrowser
 
