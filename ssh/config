@@ -82,6 +82,8 @@ Match originalhost cliffbooks exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-sel
     ProxyJump home-mesh-jump
 
 # Server: Forgejo Git SSH (port 2222; port 22 on this box is regular shell SSH)
+# Note: id_ed25519_forgejo.pub must be registered in the Forgejo web UI under
+#       your account Settings → SSH Keys (Forgejo manages its own auth database).
 Host forgejo
     HostName 192.168.1.199
     User git
@@ -91,6 +93,18 @@ Host forgejo
     HostKeyAlias forgejo
 
 Match originalhost forgejo exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-select-host' 'mesh' '192.168.1.199' 'home-mesh-jump' '2222'"
+    ProxyJump home-mesh-jump
+
+# Server: Forgejo Container Shell (port 22 system SSH, separate from Forgejo git SSH)
+Host forgejo-shell
+    HostName 192.168.1.199
+    User root
+    Port 22
+    IdentityFile /Users/ckdcreations/.ssh/id_ed25519_forgejo_shell
+    IdentitiesOnly yes
+    HostKeyAlias forgejo-shell
+
+Match originalhost forgejo-shell exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-select-host' 'mesh' '192.168.1.199' 'home-mesh-jump' '22'"
     ProxyJump home-mesh-jump
 
 # Server: ckdCreations Mac Mini

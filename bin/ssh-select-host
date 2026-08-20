@@ -2,8 +2,8 @@
 
 set -eu
 
-if [ "$#" -ne 4 ]; then
-    printf 'Usage: %s <print|local|mesh> <local_host> <mesh_host> <port>\n' "$0" >&2
+if [ "$#" -lt 4 ] || [ "$#" -gt 5 ]; then
+    printf 'Usage: %s <print|local|mesh> <local_host> <mesh_host> <port> [gateway_port]\n' "$0" >&2
     exit 2
 fi
 
@@ -11,6 +11,7 @@ MODE=$1
 LOCAL_HOST=$2
 MESH_HOST=$3
 PORT=$4
+GATEWAY_PORT=${5:-22}
 SSH_PROBE_TIMEOUT=${SSH_PROBE_TIMEOUT:-3}
 PING_REQUIRE=${SSH_SELECT_REQUIRE_PING:-1}
 PING_FALLBACK=${SSH_SELECT_PING_FALLBACK:-1}
@@ -29,10 +30,10 @@ esac
 
 is_ssh_reachable() {
     host_name=$1
+    probe_port=${2:-$PORT}
     probe_output=''
 
     [ -n "$host_name" ] || return 1
-
 
     printf 'Checking %s... ' "$host_name" >&2
 
@@ -49,7 +50,7 @@ is_ssh_reachable() {
     fi
 
     # Fast-path: keyscan works when the host exposes SSH host keys normally.
-    if ssh-keyscan -T "$SSH_PROBE_TIMEOUT" -p "$PORT" "$host_name" >/dev/null 2>&1; then
+    if ssh-keyscan -T "$SSH_PROBE_TIMEOUT" -p "$probe_port" "$host_name" >/dev/null 2>&1; then
         printf 'reachable (ssh-keyscan)\n' >&2
         return 0
     fi
@@ -63,7 +64,7 @@ is_ssh_reachable() {
         -o PreferredAuthentications=none,password,keyboard-interactive \
         -o ConnectTimeout="$SSH_PROBE_TIMEOUT" \
         -o StrictHostKeyChecking=accept-new \
-        -p "$PORT" \
+        -p "$probe_port" \
         "$host_name" \
         exit 2>&1 || true)
 
@@ -86,7 +87,7 @@ resolve_host() {
     fi
 
     printf 'Checking mesh network...\n' >&2
-    if is_ssh_reachable "$MESH_HOST"; then
+    if is_ssh_reachable "$MESH_HOST" "$GATEWAY_PORT"; then
         printf '%s\n' "$MESH_HOST"
         return 0
     fi
@@ -103,7 +104,7 @@ case "$MODE" in
         is_ssh_reachable "$LOCAL_HOST"
         ;;
     mesh)
-        ! is_ssh_reachable "$LOCAL_HOST" && is_ssh_reachable "$MESH_HOST"
+        ! is_ssh_reachable "$LOCAL_HOST" && is_ssh_reachable "$MESH_HOST" "$GATEWAY_PORT"
         ;;
     *)
         printf 'Unsupported mode: %s\n' "$MODE" >&2
