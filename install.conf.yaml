@@ -12,6 +12,7 @@
     ~/.zshrc: shell/zshrc
     ~/.zshrc.local: shell/zshrc.local
     ~/.ssh/config: ssh/config
+    ~/Library/Application Support/Code/User/settings.json: vscode/settings.json
 
 - shell:
   - [git submodule update --init --recursive, Installing submodules]
