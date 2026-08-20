@@ -81,6 +81,18 @@ Host cliffbooks
 Match originalhost cliffbooks exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-select-host' 'mesh' '192.168.1.18' 'home-mesh-jump' '22'"
     ProxyJump home-mesh-jump
 
+# Server: Forgejo Git SSH (port 2222; port 22 on this box is regular shell SSH)
+Host forgejo
+    HostName 192.168.1.199
+    User git
+    Port 2222
+    IdentityFile ~/.ssh/id_ed25519_forgejo
+    IdentitiesOnly yes
+    HostKeyAlias forgejo
+
+Match originalhost forgejo exec "sh '/Users/ckdcreations/dotfiles/bin/ssh-select-host' 'mesh' '192.168.1.199' 'home-mesh-jump' '2222'"
+    ProxyJump home-mesh-jump
+
 # Server: ckdCreations Mac Mini
 Host ckdMacMini
     User ckdcreations
