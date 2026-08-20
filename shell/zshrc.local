@@ -36,7 +36,7 @@ cliffbooks() {
 #export COPILOT_TMUX_AUTO_START=1
 
 # Created by remoteConnect
-alias ckdMSI='ssh ckdMSI'
+alias Mingus='ssh Mingus'
 
 # Created by remoteConnect
 alias proxmox='ssh proxmox'

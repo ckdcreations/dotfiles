@@ -3,14 +3,14 @@
 # Machine-specific additions belong in ~/.ssh/config.local, which is included at
 # the end of this file and intentionally stays outside git.
 
-# Server: ckdCreations MSI Laptop
-Host ckdMSI
+# Server: ckdCreations MSI Laptop (Mingus)
+Host Mingus
     HostName 192.168.1.227
     User ckdcreations
     Port 22
-    IdentityFile ~/.ssh/id_ed25519_ckdMSI
+    IdentityFile ~/.ssh/id_ed25519_Mingus
     IdentitiesOnly yes
-    HostKeyAlias ckdMSI
+    HostKeyAlias Mingus
 
 # Server: ckdCreations ASUS Laptop
 Host ckdASUS
