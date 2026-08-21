@@ -847,15 +847,15 @@ create_shell_alias() {
 }
 
 reload_local_aliases_if_possible() {
-    if (return 0 2>/dev/null); then
-        if [ -f "$LOCAL_ALIASES_FILE" ]; then
-            # shellcheck disable=SC1090
-            . "$LOCAL_ALIASES_FILE"
-            printf 'Reloaded aliases from %s\n' "$LOCAL_ALIASES_FILE"
-        fi
-    else
-        printf 'Run now to load new alias: source ~/.zshrc.local\n'
-    fi
+    # Deliberately not sourcing $LOCAL_ALIASES_FILE here: remoteConnect always
+    # runs as its own /bin/sh subprocess, so sourcing a file into it can never
+    # affect the parent interactive shell anyway. Attempting it used to also
+    # be actively harmful: /bin/sh on macOS is bash in strict POSIX mode,
+    # which rejects hyphenated function names (e.g. `home-mesh-jump() {...}`)
+    # even though the target shell (zsh) accepts them fine, and remoteConnect
+    # runs with `set -eu`, so that sourcing failure would abort the entire
+    # script before the key-install step ever ran.
+    printf 'Run now to load new alias: source ~/.zshrc.local\n'
 }
 
 sanitize_for_key_name() {
