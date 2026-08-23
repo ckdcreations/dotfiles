@@ -8,6 +8,11 @@ alias reload='source ~/.zprofile && source ~/.zshrc'
 export SSH_SELECT_REQUIRE_PING=1
 export SSH_SELECT_PING_FALLBACK=1
 
+# ─── Forgejo API token ──────────────────────────────────────────────────────
+# Pulled from macOS Keychain at shell startup (never stored in plaintext here).
+# Manage with: security {add,delete}-generic-password -a "$USER" -s forgejo-api-token
+export FORGEJO_TOKEN="$(security find-generic-password -a "$USER" -s forgejo-api-token -w 2>/dev/null)"
+
 # ─── Smart Web-UI Shortcuts ─────────────────────────────────────────────────
 # On local network: opens the service URL directly — no tunnel overhead.
 # When remote:      tunnels through home-mesh-jump and opens browser.
@@ -36,6 +41,34 @@ filebrowser() { _web_open 192.168.1.80  8080; }
 cliffbooks()  { _web_open 192.168.1.18  3000; }
 forgejo_ui()  { _web_open 192.168.1.199 3000; }
 alias forgejo-ui='forgejo_ui'
+
+# ─── RDP (Windows VM) ───────────────────────────────────────────────────────
+# On local network: opens Microsoft Remote Desktop directly to the VM's LAN IP.
+# When remote:      tunnels RDP through home-mesh-jump then opens localhost.
+#
+# Usage: windows [rdp-port]
+windows() {
+    local _ip="192.168.1.150"
+    local _rdp_port="${1:-3389}"
+    local _local_port="$_rdp_port"
+
+    # Find a free local port starting from the preferred one
+    while lsof -i "tcp:${_local_port}" -sTCP:LISTEN >/dev/null 2>&1; do
+        _local_port=$((_local_port + 1))
+    done
+
+    # Probe RDP port directly — succeeds only when we're on the LAN
+    if nc -z -w2 "$_ip" "$_rdp_port" 2>/dev/null; then
+        printf 'Local network — opening RDP to %s\n' "$_ip"
+        open "rdp://${_ip}"
+    else
+        printf 'Remote — tunneling RDP via home-mesh-jump: localhost:%s -> %s:%s\n' \
+            "$_local_port" "$_ip" "$_rdp_port"
+        printf 'Press Ctrl-C to stop.\n\n'
+        (sleep 2 && open "rdp://localhost:${_local_port}") &
+        ssh -N -L "${_local_port}:${_ip}:${_rdp_port}" home-mesh-jump
+    fi
+}
 
 # Auto-start tmux with Copilot left pane in Apple Terminal
 #export COPILOT_TMUX_AUTO_START=1
