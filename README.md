@@ -7,8 +7,13 @@ Portable shell, git, and machine setup for macOS and other UNIX-like systems.
 On any machine on the local network:
 
 ```sh
-[ -d ~/dotfiles/.git ] || git clone https://github.com/ckdcreations/dotfiles.git ~/dotfiles; ~/dotfiles/bin/updatedot --install-new-ssh-keys
+[ -d ~/dotfiles/.git ] || git clone http://192.168.1.199:3000/ckdcreations/dotfiles.git ~/dotfiles; ~/dotfiles/bin/updatedot --install-new-ssh-keys
 ```
+
+Clones anonymously over plain HTTP from the self-hosted Forgejo instance — no
+SSH key needed for this first step, since a brand-new machine doesn't have
+one yet. (dotfiles is mirrored to GitHub too, but Forgejo is the primary
+remote now; every machine's `origin` points there.)
 
 Safe to run whether or not `~/dotfiles` already exists — `git clone` refuses
 outright on a non-empty target directory (it won't update or merge into an
@@ -70,7 +75,7 @@ Machine-local config stays outside version control:
 ## Bootstrap
 
 ```sh
-git clone https://github.com/ckdcreations/dotfiles.git "$HOME/dotfiles"
+git clone http://192.168.1.199:3000/ckdcreations/dotfiles.git "$HOME/dotfiles"
 cd "$HOME/dotfiles"
 ./bin/bootstrap
 ```
@@ -136,7 +141,7 @@ Transfer `~/dotfiles-local-export.tgz` to the new machine, then run:
 
 ```sh
 tar -C "$HOME" -xzf "$HOME/dotfiles-local-export.tgz"
-git clone https://github.com/ckdcreations/dotfiles.git "$HOME/dotfiles"
+git clone http://192.168.1.199:3000/ckdcreations/dotfiles.git "$HOME/dotfiles"
 cd "$HOME/dotfiles"
 ./bin/new-machine-setup --brew --macos-defaults --restore-local "$HOME/dotfiles-local-export"
 ```

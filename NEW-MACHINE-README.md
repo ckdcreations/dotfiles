@@ -7,7 +7,7 @@ This guide gets a new laptop to the same setup as your current machine as quickl
 One line, on the new machine:
 
 ```sh
-[ -d ~/dotfiles/.git ] || git clone https://github.com/ckdcreations/dotfiles.git ~/dotfiles; ~/dotfiles/bin/updatedot --install-new-ssh-keys
+[ -d ~/dotfiles/.git ] || git clone http://192.168.1.199:3000/ckdcreations/dotfiles.git ~/dotfiles; ~/dotfiles/bin/updatedot --install-new-ssh-keys
 ```
 
 Safe to re-run even if `~/dotfiles` already exists: `git clone` refuses
@@ -22,7 +22,7 @@ For exact parity, start with the tracked repo config, then restore only truly ma
 On the new machine:
 
 ```sh
-git clone https://github.com/ckdcreations/dotfiles.git "$HOME/dotfiles"
+git clone http://192.168.1.199:3000/ckdcreations/dotfiles.git "$HOME/dotfiles"
 cd "$HOME/dotfiles"
 updatedot --install-new-ssh-keys
 ```
