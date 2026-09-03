@@ -24,11 +24,14 @@ if [[ -o login && -o interactive && -x "$DOTFILES/bin/updatedot" ]]; then
 
     _updatedot_output=""
     if [ "$_run_updatedot" -eq 1 ]; then
-        _updatedot_output="$($DOTFILES/bin/updatedot 2>&1 || true)"
+        # --install-new-ssh-keys walks through any newly-added host aliases
+        # one at a time, prompting for that host's password before moving to
+        # the next. Piping through tee (rather than only capturing into a
+        # variable) streams every line -- including the context right before
+        # each password prompt -- to the terminal live, instead of silently
+        # buffering it all until the whole run finishes.
+        _updatedot_output="$($DOTFILES/bin/updatedot --install-new-ssh-keys 2>&1 | tee /dev/tty || true)"
         printf '%s\n' "$_updatedot_today" > "$_updatedot_stamp"
-        if [ -n "$_updatedot_output" ]; then
-            printf '%s\n' "$_updatedot_output"
-        fi
     fi
 
     case "$_updatedot_output" in
