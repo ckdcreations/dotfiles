@@ -1,15 +1,25 @@
 export NVM_DIR="$HOME/.nvm"
 
+# Homebrew-installed nvm (macOS) checked first since it's what the rest of
+# this file's original comments assumed; falls back to $NVM_DIR/nvm.sh, the
+# location nvm's own official install script uses everywhere else, Linux
+# included -- without this fallback, npm/node/claude (and anything installed
+# via npm -g, like the Claude Code CLI) are unreachable in every login shell
+# on any machine that installed nvm the standard way instead of via Homebrew.
 if [ -s "/opt/homebrew/opt/nvm/nvm.sh" ]; then
     . "/opt/homebrew/opt/nvm/nvm.sh"
 elif [ -s "/usr/local/opt/nvm/nvm.sh" ]; then
     . "/usr/local/opt/nvm/nvm.sh"
+elif [ -s "$NVM_DIR/nvm.sh" ]; then
+    . "$NVM_DIR/nvm.sh"
 fi
 
 if [ -s "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" ]; then
     . "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm"
 elif [ -s "/usr/local/opt/nvm/etc/bash_completion.d/nvm" ]; then
     . "/usr/local/opt/nvm/etc/bash_completion.d/nvm"
+elif [ -s "$NVM_DIR/bash_completion" ]; then
+    . "$NVM_DIR/bash_completion"
 fi
 
 HISTFILE="$HOME/.zsh_history"
