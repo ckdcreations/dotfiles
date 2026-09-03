@@ -1,0 +1,58 @@
+#!/bin/sh
+# Ensures the Claude Code CLI is installed and logged in before the rest of
+# updatedot runs. Idempotent -- a no-op when already installed and logged in.
+#
+# Never attempts the OAuth login flow on the user's behalf -- same principle
+# already established in ckdCreations-claude-skills/remote-control-setup:
+# that's the user's account credential, it must be them.
+
+set -eu
+
+log() {
+    printf '%s\n' "$1"
+}
+
+# Reads a line from the real terminal, not stdin -- required so this still
+# works when invoked as part of `curl ... | bash`, where stdin is the piped
+# script itself, not an interactive terminal.
+read_from_tty() {
+    if [ -r /dev/tty ]; then
+        IFS= read -r _reply < /dev/tty
+    else
+        _reply=""
+    fi
+}
+
+is_logged_in() {
+    case "$(uname -s)" in
+        Darwin)
+            security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1
+            ;;
+        *)
+            [ -f "$HOME/.claude/.credentials.json" ]
+            ;;
+    esac
+}
+
+if ! command -v claude >/dev/null 2>&1; then
+    log "Claude Code CLI not found. Installing..."
+    if ! command -v npm >/dev/null 2>&1; then
+        log "Error: npm is required to install the Claude Code CLI, but it's not on PATH."
+        log "Install Node.js first (e.g. 'brew install node' on macOS), then re-run this."
+        exit 1
+    fi
+    npm install -g @anthropic-ai/claude-code
+    log "Claude Code CLI installed."
+fi
+
+if ! is_logged_in; then
+    log ""
+    log "Claude Code CLI is installed but not logged in."
+    log "Run 'claude' in another terminal now and complete the browser login."
+    log "Press Enter here once you're logged in to continue (or Ctrl-C to stop)..."
+    read_from_tty
+    if ! is_logged_in; then
+        log "Still not logged in -- stopping here. Re-run this once you've logged in."
+        exit 1
+    fi
+fi

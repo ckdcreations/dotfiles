@@ -11,6 +11,8 @@ RUN_BOOTSTRAP=1
 INSTALL_BREW=0
 ENSURE_TOOLS=0
 INSTALL_NEW_SSH_KEYS=0
+CHECK_CLAUDE_CLI=1
+SYNC_CLAUDE_SKILLS=1
 
 usage() {
     cat <<'EOF'
@@ -29,6 +31,8 @@ Options:
   --ensure-tools        Run ./bin/cli-tools --install after update
   --install-new-ssh-keys
                        Generate and install newly missing managed SSH keys
+  --no-claude-cli       Skip ensuring the Claude Code CLI is installed/logged in
+  --no-claude-skills    Skip syncing ckdCreations-claude-skills
   -h, --help            Show this help message
 
 Examples:
@@ -86,6 +90,14 @@ while [ "$#" -gt 0 ]; do
             INSTALL_NEW_SSH_KEYS=1
             shift
             ;;
+        --no-claude-cli)
+            CHECK_CLAUDE_CLI=0
+            shift
+            ;;
+        --no-claude-skills)
+            SYNC_CLAUDE_SKILLS=0
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -101,6 +113,10 @@ if [ ! -d "$DOTFILES_DIR/.git" ]; then
 fi
 
 cd "$DOTFILES_DIR"
+
+if [ "$CHECK_CLAUDE_CLI" -eq 1 ] && [ -x "$DOTFILES_DIR/bin/ensure-claude-cli" ]; then
+    "$DOTFILES_DIR/bin/ensure-claude-cli"
+fi
 
 if ! git remote get-url "$REMOTE" >/dev/null 2>&1; then
     fail "Remote '$REMOTE' does not exist"
@@ -163,6 +179,11 @@ if [ "$RUN_BOOTSTRAP" -eq 1 ]; then
 elif [ "$INSTALL_NEW_SSH_KEYS" -eq 1 ]; then
     log "Ensuring managed SSH keys..."
     ./bin/ensure-managed-ssh --install-new-keys
+fi
+
+if [ "$SYNC_CLAUDE_SKILLS" -eq 1 ] && [ -x "$DOTFILES_DIR/bin/sync-claude-skills" ]; then
+    log "Syncing ckdCreations-claude-skills..."
+    "$DOTFILES_DIR/bin/sync-claude-skills"
 fi
 
 if [ "$ENSURE_TOOLS" -eq 1 ]; then

@@ -30,12 +30,11 @@ if [[ -o login && -o interactive && -x "$DOTFILES/bin/updatedot" ]]; then
         # variable) streams every line -- including the context right before
         # each password prompt -- to the terminal live, instead of silently
         # buffering it all until the whole run finishes.
+        # updatedot itself now also ensures the Claude Code CLI is
+        # installed/logged in, and syncs ckdCreations-claude-skills, so
+        # neither needs a separate call here.
         _updatedot_output="$($DOTFILES/bin/updatedot --install-new-ssh-keys 2>&1 | tee /dev/tty || true)"
         printf '%s\n' "$_updatedot_today" > "$_updatedot_stamp"
-
-        if [ -x "$DOTFILES/bin/sync-claude-skills" ]; then
-            "$DOTFILES/bin/sync-claude-skills" 2>&1 | tee /dev/tty || true
-        fi
     fi
 
     case "$_updatedot_output" in
