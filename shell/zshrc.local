@@ -96,3 +96,11 @@ minecraft() {
     *)      ssh minecraft "$@" ;;
   esac
 }
+
+# Created by remoteConnect
+claudeRemote() {
+  case "${1:-}" in
+    tunnel) shift; remoteConnect tunnel claude-code "$@" ;;
+    *)      ssh claude-code "$@" ;;
+  esac
+}

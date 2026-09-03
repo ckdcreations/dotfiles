@@ -18,7 +18,8 @@
         "cliffbooks": "linux",
         "ckdASUS": "linux",
         "Mingus": "linux",
-        "proxmox": "linux"
+        "proxmox": "linux",
+        "claude-code": "linux"
     },
     "git.autofetch": true,
     "remote.SSH.configFile": "/Users/ckdcreations/.ssh/config",
