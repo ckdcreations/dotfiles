@@ -30,7 +30,7 @@ Host proxmox
     IdentitiesOnly yes
     HostKeyAlias proxmox
 
-Match originalhost proxmox exec "sh \"$HOME/dotfiles/bin/ssh-select-host\" 'mesh' '192.168.1.143' 'home-mesh-jump' '22'"
+Match originalhost proxmox exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.143 home-mesh-jump 22"
     ProxyJump home-mesh-jump
 
 # Server: Jellyfin Web UI
@@ -42,7 +42,7 @@ Host jellyfin
     IdentitiesOnly yes
     HostKeyAlias jellyfin
 
-Match originalhost jellyfin exec "sh \"$HOME/dotfiles/bin/ssh-select-host\" 'mesh' '192.168.1.160' 'home-mesh-jump' '22'"
+Match originalhost jellyfin exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.160 home-mesh-jump 22"
     ProxyJump home-mesh-jump
 
 # Server: Immich Web UI
@@ -54,7 +54,7 @@ Host immich
     IdentitiesOnly yes
     HostKeyAlias immich
 
-Match originalhost immich exec "sh \"$HOME/dotfiles/bin/ssh-select-host\" 'mesh' '192.168.1.152' 'home-mesh-jump' '22'"
+Match originalhost immich exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.152 home-mesh-jump 22"
     ProxyJump home-mesh-jump
 
 # Server: File Browser Web UI
@@ -66,7 +66,7 @@ Host filebrowser
     IdentitiesOnly yes
     HostKeyAlias filebrowser
 
-Match originalhost filebrowser exec "sh \"$HOME/dotfiles/bin/ssh-select-host\" 'mesh' '192.168.1.80' 'home-mesh-jump' '22'"
+Match originalhost filebrowser exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.80 home-mesh-jump 22"
     ProxyJump home-mesh-jump
 
 # Server: CliffBooks Web UI
@@ -78,7 +78,7 @@ Host cliffbooks
     IdentitiesOnly yes
     HostKeyAlias cliffbooks
 
-Match originalhost cliffbooks exec "sh \"$HOME/dotfiles/bin/ssh-select-host\" 'mesh' '192.168.1.18' 'home-mesh-jump' '22'"
+Match originalhost cliffbooks exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.18 home-mesh-jump 22"
     ProxyJump home-mesh-jump
 
 # Server: Forgejo Git SSH (port 2222; port 22 on this box is regular shell SSH)
@@ -92,7 +92,7 @@ Host forgejo
     IdentitiesOnly yes
     HostKeyAlias forgejo
 
-Match originalhost forgejo exec "sh \"$HOME/dotfiles/bin/ssh-select-host\" 'mesh' '192.168.1.199' 'home-mesh-jump' '2222'"
+Match originalhost forgejo exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.199 home-mesh-jump 2222"
     ProxyJump home-mesh-jump
 
 # Server: Forgejo Container Shell (port 22 system SSH, separate from Forgejo git SSH)
@@ -104,7 +104,7 @@ Host forgejo-shell
     IdentitiesOnly yes
     HostKeyAlias forgejo-shell
 
-Match originalhost forgejo-shell exec "sh \"$HOME/dotfiles/bin/ssh-select-host\" 'mesh' '192.168.1.199' 'home-mesh-jump' '22'"
+Match originalhost forgejo-shell exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.199 home-mesh-jump 22"
     ProxyJump home-mesh-jump
 
 # Server: ckdCreations Mac Mini
@@ -115,10 +115,10 @@ Host ckdMacMini
     IdentitiesOnly yes
     HostKeyAlias ckdMacMini
 
-Match originalhost ckdMacMini exec "sh \"$HOME/dotfiles/bin/ssh-select-host\" 'local' '192.168.1.226' '100.97.179.166' '22'"
+Match originalhost ckdMacMini exec "sh ~/dotfiles/bin/ssh-select-host local 192.168.1.226 100.97.179.166 22"
     HostName 192.168.1.226
 
-Match originalhost ckdMacMini exec "sh \"$HOME/dotfiles/bin/ssh-select-host\" 'mesh' '192.168.1.226' '100.97.179.166' '22'"
+Match originalhost ckdMacMini exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.226 100.97.179.166 22"
     HostName 100.97.179.166
 
 # Server: Home Mesh Jump
@@ -141,7 +141,7 @@ Host minecraft
     IdentitiesOnly yes
     HostKeyAlias minecraft
 
-Match originalhost minecraft exec "sh \"$HOME/dotfiles/bin/ssh-select-host\" 'mesh' '192.168.1.141' 'home-mesh-jump' '22'"
+Match originalhost minecraft exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.141 home-mesh-jump 22"
     ProxyJump home-mesh-jump
 
 # Server: claude-code (container, DHCP IP — update HostName below if it moves)
@@ -153,5 +153,5 @@ Host claude-code
     IdentitiesOnly yes
     HostKeyAlias claude-code
 
-Match originalhost claude-code exec "sh \"$HOME/dotfiles/bin/ssh-select-host\" 'mesh' '192.168.1.40' 'home-mesh-jump' '22'"
+Match originalhost claude-code exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.40 home-mesh-jump 22"
     ProxyJump home-mesh-jump
