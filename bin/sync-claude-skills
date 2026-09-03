@@ -1,0 +1,58 @@
+#!/bin/sh
+# Ensures ~/ckdCreations-claude-skills (personal, self-authored Claude Code
+# skills, kept separate from third-party skills already living directly in
+# ~/.claude) is cloned/up to date, and that every skill folder in it is
+# symlinked into ~/.claude/skills so it's available in every Claude Code
+# session on this machine.
+#
+# Intentionally tolerant of failure (unreachable Forgejo, diverged local
+# history, etc.) -- this runs as part of the daily terminal-open auto-update
+# and should never be the reason a new shell fails to start.
+
+set -eu
+
+REPO_URL="git@forgejo:ckdcreations/ckdCreations-claude-skills.git"
+REPO_DIR="$HOME/ckdCreations-claude-skills"
+SKILLS_DIR="$HOME/.claude/skills"
+
+log() {
+    printf '%s\n' "$1"
+}
+
+# Clone if missing.
+if [ ! -d "$REPO_DIR" ]; then
+    log "Cloning ckdCreations-claude-skills..."
+    if ! git clone --quiet "$REPO_URL" "$REPO_DIR" 2>&1; then
+        log "Warning: could not clone ckdCreations-claude-skills (is forgejo reachable?). Skipping skill sync."
+        exit 0
+    fi
+elif [ -d "$REPO_DIR/.git" ]; then
+    if ! git -C "$REPO_DIR" pull --quiet --ff-only 2>&1; then
+        log "Warning: could not fast-forward ckdCreations-claude-skills (local changes or diverged history?)."
+        log "  Leaving it as-is -- check it manually: cd $REPO_DIR && git status"
+    fi
+else
+    log "Warning: $REPO_DIR exists but isn't a git repo. Skipping skill sync."
+    exit 0
+fi
+
+mkdir -p "$SKILLS_DIR"
+
+for skill_path in "$REPO_DIR"/*/; do
+    [ -f "${skill_path}SKILL.md" ] || continue
+    skill_name=$(basename "$skill_path")
+    link_path="$SKILLS_DIR/$skill_name"
+    skill_path=${skill_path%/}
+
+    if [ -L "$link_path" ]; then
+        current_target=$(readlink "$link_path")
+        if [ "$current_target" != "$skill_path" ]; then
+            log "Warning: $link_path is a symlink to something else ($current_target). Not touching it."
+        fi
+    elif [ -e "$link_path" ]; then
+        log "Warning: $link_path already exists and isn't a symlink to $skill_path. Not touching it."
+    else
+        ln -s "$skill_path" "$link_path"
+        log "Linked skill: $skill_name"
+    fi
+done

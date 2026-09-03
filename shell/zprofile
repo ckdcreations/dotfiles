@@ -32,6 +32,10 @@ if [[ -o login && -o interactive && -x "$DOTFILES/bin/updatedot" ]]; then
         # buffering it all until the whole run finishes.
         _updatedot_output="$($DOTFILES/bin/updatedot --install-new-ssh-keys 2>&1 | tee /dev/tty || true)"
         printf '%s\n' "$_updatedot_today" > "$_updatedot_stamp"
+
+        if [ -x "$DOTFILES/bin/sync-claude-skills" ]; then
+            "$DOTFILES/bin/sync-claude-skills" 2>&1 | tee /dev/tty || true
+        fi
     fi
 
     case "$_updatedot_output" in
