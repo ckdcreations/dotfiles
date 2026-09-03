@@ -4,11 +4,10 @@ This guide gets a new laptop to the same setup as your current machine as quickl
 
 ## TL;DR
 
-On the new machine, after cloning this repo:
+One line, on the new machine:
 
 ```sh
-cd "$HOME/dotfiles"
-updatedot
+git clone https://github.com/ckdcreations/dotfiles.git ~/dotfiles && ~/dotfiles/bin/updatedot --install-new-ssh-keys
 ```
 
 For exact parity, start with the tracked repo config, then restore only truly machine-local files if needed.
@@ -18,22 +17,20 @@ For exact parity, start with the tracked repo config, then restore only truly ma
 On the new machine:
 
 ```sh
-git clone <your-remote> "$HOME/dotfiles"
+git clone https://github.com/ckdcreations/dotfiles.git "$HOME/dotfiles"
 cd "$HOME/dotfiles"
-updatedot
+updatedot --install-new-ssh-keys
 ```
 
 `updatedot` will:
 
 - pull the latest dotfiles
 - re-link the tracked shell and SSH config
-- generate any missing `~/.ssh/id_ed25519_*` keys referenced by the tracked SSH aliases
+- generate any missing `~/.ssh/id_ed25519_*` keys referenced by the tracked SSH aliases (with `--install-new-ssh-keys`, it also walks through installing each one, prompting for that host's password one at a time)
+- make sure the Claude Code CLI is installed and you're logged in (never attempts the OAuth login on your behalf — it'll tell you to run `claude` yourself and wait for confirmation)
+- pull `ckdCreations-claude-skills` and symlink each skill into `~/.claude/skills`
 
-If this is a brand-new laptop and those SSH keys are not installed on your remotes yet, run:
-
-```sh
-updatedot --install-new-ssh-keys
-```
+One exception: the `forgejo` git-SSH host can't be auto-authorized this way (Forgejo doesn't support password-based key install), so it's skipped with a warning during the key walk-through. Register `~/.ssh/id_ed25519_forgejo.pub` once via the Forgejo web UI (Settings → SSH/GPG Keys), then re-run `updatedot` to pick up the skills repo.
 
 ## 2) Export only machine-local files from old machine
 

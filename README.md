@@ -2,6 +2,27 @@
 
 Portable shell, git, and machine setup for macOS and other UNIX-like systems.
 
+## Quick install (one line)
+
+On any machine on the local network:
+
+```sh
+git clone https://github.com/ckdcreations/dotfiles.git ~/dotfiles && ~/dotfiles/bin/updatedot --install-new-ssh-keys
+```
+
+This clones the repo and runs `updatedot`, which links all managed config,
+generates and installs any missing SSH keys (prompting for a password one
+host at a time as needed), makes sure the Claude Code CLI is installed and
+you're logged in, and pulls `ckdCreations-claude-skills` into
+`~/.claude/skills`.
+
+One caveat on a brand-new machine: the `forgejo` git-SSH host can't be
+auto-authorized (Forgejo doesn't support password-based key install like a
+normal SSH host does), so that one host gets skipped with a warning during
+the key walk-through. Register `~/.ssh/id_ed25519_forgejo.pub` once via the
+Forgejo web UI (Settings → SSH/GPG Keys), then re-run `updatedot` to pick up
+the skills repo. Everything else in the command above runs unattended.
+
 ## What this repo manages
 
 - `shell/zprofile` for login-shell environment setup
@@ -47,7 +68,7 @@ Machine-local config stays outside version control:
 ## Bootstrap
 
 ```sh
-git clone <your-remote> "$HOME/dotfiles"
+git clone https://github.com/ckdcreations/dotfiles.git "$HOME/dotfiles"
 cd "$HOME/dotfiles"
 ./bin/bootstrap
 ```
@@ -113,7 +134,7 @@ Transfer `~/dotfiles-local-export.tgz` to the new machine, then run:
 
 ```sh
 tar -C "$HOME" -xzf "$HOME/dotfiles-local-export.tgz"
-git clone <your-remote> "$HOME/dotfiles"
+git clone https://github.com/ckdcreations/dotfiles.git "$HOME/dotfiles"
 cd "$HOME/dotfiles"
 ./bin/new-machine-setup --brew --macos-defaults --restore-local "$HOME/dotfiles-local-export"
 ```
