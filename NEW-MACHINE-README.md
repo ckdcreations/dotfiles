@@ -7,8 +7,13 @@ This guide gets a new laptop to the same setup as your current machine as quickl
 One line, on the new machine:
 
 ```sh
-git clone https://github.com/ckdcreations/dotfiles.git ~/dotfiles && ~/dotfiles/bin/updatedot --install-new-ssh-keys
+[ -d ~/dotfiles/.git ] || git clone https://github.com/ckdcreations/dotfiles.git ~/dotfiles; ~/dotfiles/bin/updatedot --install-new-ssh-keys
 ```
+
+Safe to re-run even if `~/dotfiles` already exists: `git clone` refuses
+outright on a non-empty target directory rather than updating it, so the
+command only clones when `~/dotfiles` isn't there yet, then always runs
+`updatedot`.
 
 For exact parity, start with the tracked repo config, then restore only truly machine-local files if needed.
 

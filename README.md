@@ -7,14 +7,16 @@ Portable shell, git, and machine setup for macOS and other UNIX-like systems.
 On any machine on the local network:
 
 ```sh
-git clone https://github.com/ckdcreations/dotfiles.git ~/dotfiles && ~/dotfiles/bin/updatedot --install-new-ssh-keys
+[ -d ~/dotfiles/.git ] || git clone https://github.com/ckdcreations/dotfiles.git ~/dotfiles; ~/dotfiles/bin/updatedot --install-new-ssh-keys
 ```
 
-This clones the repo and runs `updatedot`, which links all managed config,
-generates and installs any missing SSH keys (prompting for a password one
-host at a time as needed), makes sure the Claude Code CLI is installed and
-you're logged in, and pulls `ckdCreations-claude-skills` into
-`~/.claude/skills`.
+Safe to run whether or not `~/dotfiles` already exists — `git clone` refuses
+outright on a non-empty target directory (it won't update or merge into an
+existing clone), so the command only clones if `~/dotfiles` isn't there yet,
+then always runs `updatedot`, which links all managed config, generates and
+installs any missing SSH keys (prompting for a password one host at a time
+as needed), makes sure the Claude Code CLI is installed and you're logged
+in, and pulls `ckdCreations-claude-skills` into `~/.claude/skills`.
 
 One caveat on a brand-new machine: the `forgejo` git-SSH host can't be
 auto-authorized (Forgejo doesn't support password-based key install like a
