@@ -39,7 +39,43 @@ jellyfin()    { _web_open 192.168.1.160 8096; }
 immich()      { _web_open 192.168.1.152 2283; }
 filebrowser() { _web_open 192.168.1.80  8080; }
 cliffbooks()  { _web_open 192.168.1.18  3000; }
-forgejo_ui()  { _web_open 192.168.1.199 3000; }
+
+# Forgejo (CT 109) has no mesh/Tailscale interface and its ROOT_URL is
+# hard-coded to http://192.168.1.199:3000/. Reaching it by any other address
+# (e.g. an SSH-forwarded localhost:3000) trips Forgejo's "non-canonical URL"
+# banner and breaks CSRF, login redirects and clone-URL display.
+#
+#   On LAN : 192.168.1.199:3000 answers directly — just open it.
+#   Off LAN: forward the tunnel *on* 192.168.1.199 itself (added as a lo0
+#            alias) so the browser's address bar still equals ROOT_URL. The
+#            alias exists only for the life of the tunnel and is removed on
+#            exit — while it is up this Mac cannot reach the real
+#            192.168.1.199, so never run this while on the home LAN.
+#
+# Needs a promptless sudoers rule for the two ifconfig calls — one time:
+#   printf '%s\n' 'ckdcreations ALL=(root) NOPASSWD: /sbin/ifconfig lo0 alias 192.168.1.199 255.255.255.255, /sbin/ifconfig lo0 -alias 192.168.1.199' \
+#     | sudo tee /etc/sudoers.d/forgejo-lo0 >/dev/null && sudo chmod 440 /etc/sudoers.d/forgejo-lo0 && sudo visudo -cf /etc/sudoers.d/forgejo-lo0
+# Stale alias after a hard kill:  sudo /sbin/ifconfig lo0 -alias 192.168.1.199
+forgejo_ui() {
+    emulate -L zsh
+    local ip=192.168.1.199 port=3000
+
+    # -G bounds the *connect* phase (-w alone does not): a black-holed route
+    # fails in ~2s instead of hanging ~75s. Success => reachable, just open.
+    if nc -G 2 -w 2 -z "$ip" "$port" 2>/dev/null; then
+        open "http://$ip:$port"
+        return
+    fi
+
+    sudo /sbin/ifconfig lo0 alias "$ip" 255.255.255.255 || return 1
+    {
+        (sleep 2 && open "http://$ip:$port") &!
+        print -r -- "forgejo-ui: tunnelling $ip:$port via home-mesh-jump — Ctrl-C to stop."
+        ssh -N -L "${ip}:${port}:${ip}:${port}" home-mesh-jump
+    } always {
+        sudo /sbin/ifconfig lo0 -alias "$ip" 2>/dev/null
+    }
+}
 alias forgejo-ui='forgejo_ui'
 
 # ─── RDP (Windows VM) ───────────────────────────────────────────────────────
