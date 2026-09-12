@@ -148,13 +148,21 @@ if [ "$FORCE_RESET" -eq 1 ]; then
     log "Resetting to $REMOTE/$BRANCH"
     git reset --hard "$REMOTE/$BRANCH"
 else
-    log "Pulling latest changes with rebase from $REMOTE/$BRANCH"
-    if ! git pull --rebase "$REMOTE" "$BRANCH"; then
+    log "Rebasing onto $REMOTE/$BRANCH"
+    # Deliberately `git rebase "$REMOTE/$BRANCH"` rather than `git pull --rebase`:
+    # pull's internal fetch decides what to rebase onto by counting "for-merge"
+    # lines in .git/FETCH_HEAD, and a concurrent fetch from anything else against
+    # this repo (e.g. a background `git.autofetch` in an editor) can interleave
+    # its own write to that file and leave more than one candidate there, which
+    # aborts with "fatal: Cannot rebase onto multiple branches." Rebasing onto
+    # the remote-tracking ref we already fetched above never reads FETCH_HEAD,
+    # so it can't be tripped up by another process fetching at the same time.
+    if ! git rebase "$REMOTE/$BRANCH"; then
         if [ "$stash_created" -eq 1 ]; then
-            log "Pull failed. Restoring stashed local changes..."
+            log "Rebase failed. Restoring stashed local changes..."
             git stash pop || true
         fi
-        fail "Update failed during pull --rebase"
+        fail "Update failed during rebase onto $REMOTE/$BRANCH"
     fi
 fi
 
