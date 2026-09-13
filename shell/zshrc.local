@@ -39,6 +39,12 @@ jellyfin()    { _web_open 192.168.1.160 8096; }
 immich()      { _web_open 192.168.1.152 2283; }
 filebrowser() { _web_open 192.168.1.80  8080; }
 cliffbooks()  { _web_open 192.168.1.18  3000; }
+openwebui()   { _web_open 192.168.1.251 8080; }
+
+# ckdCreations Dev Site (CT 112) — Next.js dev server, no ROOT_URL lock-in like
+# Forgejo, so a plain tunnel-and-open is fine.
+ckdcreations-dev() { ssh ckdcreations-dev "$@"; }
+ckdcreations-ui()  { _web_open 192.168.1.10 3000; }
 
 # Forgejo (CT 109) has no mesh/Tailscale interface and its ROOT_URL is
 # hard-coded to http://192.168.1.199:3000/. Reaching it by any other address
@@ -138,5 +144,27 @@ claudeRemote() {
   case "${1:-}" in
     tunnel) shift; remoteConnect tunnel claude-code "$@" ;;
     *)      ssh claude-code "$@" ;;
+  esac
+}
+
+# No web UI on these — SSH-only admin access.
+samba() {
+  case "${1:-}" in
+    tunnel) shift; remoteConnect tunnel samba "$@" ;;
+    *)      ssh samba "$@" ;;
+  esac
+}
+
+timemachine() {
+  case "${1:-}" in
+    tunnel) shift; remoteConnect tunnel timemachine "$@" ;;
+    *)      ssh timemachine "$@" ;;
+  esac
+}
+
+ollama() {
+  case "${1:-}" in
+    tunnel) shift; remoteConnect tunnel ollama "$@" ;;
+    *)      ssh ollama "$@" ;;
   esac
 }

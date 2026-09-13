@@ -3,7 +3,7 @@
 set -eu
 
 if [ "$#" -lt 4 ] || [ "$#" -gt 5 ]; then
-    printf 'Usage: %s <print|local|mesh> <local_host> <mesh_host> <port> [gateway_port]\n' "$0" >&2
+    printf 'Usage: %s <print|local|mesh|none> <local_host> <mesh_host> <port> [gateway_port]\n' "$0" >&2
     exit 2
 fi
 
@@ -105,6 +105,11 @@ case "$MODE" in
         ;;
     mesh)
         ! is_ssh_reachable "$LOCAL_HOST" && is_ssh_reachable "$MESH_HOST" "$GATEWAY_PORT"
+        ;;
+    none)
+        # Neither the local IP nor the host's own mesh IP is reachable.
+        # Used as a final Match fallback to route via a jump host instead.
+        ! is_ssh_reachable "$LOCAL_HOST" && ! is_ssh_reachable "$MESH_HOST" "$GATEWAY_PORT"
         ;;
     *)
         printf 'Unsupported mode: %s\n' "$MODE" >&2

@@ -12,6 +12,9 @@ Host Mingus
     IdentitiesOnly yes
     HostKeyAlias Mingus
 
+Match originalhost Mingus exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.227 home-mesh-jump 22"
+    ProxyJump home-mesh-jump
+
 # Server: ckdCreations ASUS Laptop
 Host ckdASUS
     HostName 192.168.1.219
@@ -20,6 +23,9 @@ Host ckdASUS
     IdentityFile ~/.ssh/id_ed25519_ckdASUS
     IdentitiesOnly yes
     HostKeyAlias ckdASUS
+
+Match originalhost ckdASUS exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.219 home-mesh-jump 22"
+    ProxyJump home-mesh-jump
 
 # Server: Proxmox Host
 Host proxmox
@@ -121,6 +127,13 @@ Match originalhost ckdMacMini exec "sh ~/dotfiles/bin/ssh-select-host local 192.
 Match originalhost ckdMacMini exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.226 100.97.179.166 22"
     HostName 100.97.179.166
 
+# Neither the LAN IP nor its own Tailscale IP is reachable directly (e.g. this
+# client has no Tailscale peering to it) — fall back to routing via the jump,
+# which sits on the same LAN and can always reach the LAN IP.
+Match originalhost ckdMacMini exec "sh ~/dotfiles/bin/ssh-select-host none 192.168.1.226 100.97.179.166 22"
+    HostName 192.168.1.226
+    ProxyJump home-mesh-jump
+
 # Server: Home Mesh Jump
 Host home-mesh-jump
     HostName 100.84.135.105
@@ -129,6 +142,72 @@ Host home-mesh-jump
     IdentityFile ~/.ssh/id_ed25519_home-mesh-jump
     IdentitiesOnly yes
     HostKeyAlias home-mesh-jump
+
+# Server: ckdCreations Dev Site (CT 112 — Next.js dev server on :3000)
+Host ckdcreations-dev
+    HostName 192.168.1.10
+    User ckdcreations
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_ckdcreations-dev
+    IdentitiesOnly yes
+    HostKeyAlias ckdcreations-dev
+
+Match originalhost ckdcreations-dev exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.10 home-mesh-jump 22"
+    ProxyJump home-mesh-jump
+
+# Server: Open WebUI (CT 113 — has its own NordVPN Meshnet interface)
+Host openwebui
+    User root
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_openwebui
+    IdentitiesOnly yes
+    HostKeyAlias openwebui
+
+Match originalhost openwebui exec "sh ~/dotfiles/bin/ssh-select-host local 192.168.1.251 100.118.101.97 22"
+    HostName 192.168.1.251
+
+Match originalhost openwebui exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.251 100.118.101.97 22"
+    HostName 100.118.101.97
+
+Match originalhost openwebui exec "sh ~/dotfiles/bin/ssh-select-host none 192.168.1.251 100.118.101.97 22"
+    HostName 192.168.1.251
+    ProxyJump home-mesh-jump
+
+# Server: Samba File Share (CT 103)
+Host samba
+    HostName 192.168.1.249
+    User root
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_samba
+    IdentitiesOnly yes
+    HostKeyAlias samba
+
+Match originalhost samba exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.249 home-mesh-jump 22"
+    ProxyJump home-mesh-jump
+
+# Server: Time Machine Backup Target (CT 104)
+Host timemachine
+    HostName 192.168.1.86
+    User root
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_timemachine
+    IdentitiesOnly yes
+    HostKeyAlias timemachine
+
+Match originalhost timemachine exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.86 home-mesh-jump 22"
+    ProxyJump home-mesh-jump
+
+# Server: Ollama LLM Host (CT 108)
+Host ollama
+    HostName 192.168.1.162
+    User root
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_ollama
+    IdentitiesOnly yes
+    HostKeyAlias ollama
+
+Match originalhost ollama exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.162 home-mesh-jump 22"
+    ProxyJump home-mesh-jump
 
 Include ~/.ssh/config.local
 
