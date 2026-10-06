@@ -28,25 +28,68 @@ case "$(uname -s)" in
         ;;
 esac
 
+# Probe results are cached briefly. Every ssh invocation to a Match-gated
+# alias runs this script, and clients like VS Code Remote-SSH open several
+# connections (plus retries) within seconds. OpenSSH 10's PerSourcePenalties
+# (on by default) temporarily blocks a source IP that opens connections
+# without authenticating -- which is exactly what the ssh-keyscan / no-auth
+# fallback probes below do -- so re-probing on every connection gets this
+# machine's IP dropped by the very host it's trying to reach.
+PROBE_CACHE_TTL=${SSH_SELECT_CACHE_TTL:-30}
+PROBE_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/ssh-select-host"
+
+cached_result() {
+    cache_file="$PROBE_CACHE_DIR/$1"
+    [ -f "$cache_file" ] || return 2
+    read -r cached_at cached_rc < "$cache_file" || return 2
+    [ $(( $(date +%s) - cached_at )) -lt "$PROBE_CACHE_TTL" ] || return 2
+    return "$cached_rc"
+}
+
+store_result() {
+    mkdir -p "$PROBE_CACHE_DIR" 2>/dev/null || return 0
+    printf '%s %s\n' "$(date +%s)" "$2" > "$PROBE_CACHE_DIR/$1" 2>/dev/null || true
+}
+
 is_ssh_reachable() {
     host_name=$1
     probe_port=${2:-$PORT}
-    probe_output=''
+    cache_key="${host_name}_${probe_port}"
 
     [ -n "$host_name" ] || return 1
 
+    rc=0
+    cached_result "$cache_key" || rc=$?
+    if [ "$rc" -ne 2 ]; then
+        return "$rc"
+    fi
+
+    rc=0
+    probe_host "$host_name" "$probe_port" || rc=$?
+    store_result "$cache_key" "$rc"
+    return "$rc"
+}
+
+probe_host() {
+    host_name=$1
+    probe_port=$2
+    probe_output=''
+
     printf 'Checking %s... ' "$host_name" >&2
 
-    # Optional pre-check: ping before any SSH attempt.
+    # Ping first. A reply is enough to call the host reachable -- don't go on
+    # to touch sshd at all (see the PerSourcePenalties note above).
     # With SSH_SELECT_PING_FALLBACK=1 (default), a ping miss still tries SSH probes.
     if [ "$PING_REQUIRE" = "1" ]; then
-        if ! ping -n -c "$PING_COUNT" -W "$PING_WAIT" "$host_name" >/dev/null 2>&1; then
-            if [ "$PING_FALLBACK" != "1" ]; then
-                printf 'unreachable (no ping)\n' >&2
-                return 1
-            fi
-            printf 'no ping, probing ssh... ' >&2
+        if ping -n -c "$PING_COUNT" -W "$PING_WAIT" "$host_name" >/dev/null 2>&1; then
+            printf 'reachable (ping)\n' >&2
+            return 0
         fi
+        if [ "$PING_FALLBACK" != "1" ]; then
+            printf 'unreachable (no ping)\n' >&2
+            return 1
+        fi
+        printf 'no ping, probing ssh... ' >&2
     fi
 
     # Fast-path: keyscan works when the host exposes SSH host keys normally.
