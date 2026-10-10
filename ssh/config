@@ -155,19 +155,25 @@ Host ckdcreations-dev
 Match originalhost ckdcreations-dev exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.10 home-mesh-jump 22"
     ProxyJump home-mesh-jump
 
-# Server: Open WebUI (CT 113 — has its own NordVPN Meshnet interface)
+# Server: Open WebUI (CT 113)
+# CT113 dropped off NordVPN Meshnet at some point (confirmed via `nordvpn
+# status`: "Meshnet is not enabled", no nordlynx interface) and 100.118.101.97
+# — its old meshnet IP — now answers SSH as a *different* device (different
+# host key; verified CT113's real, unchanged key via its LAN address through
+# proxmox). Dropped the own-mesh-IP fallback back to the plain local+jump
+# pattern until Meshnet is re-enabled on CT113; restore the 3-way
+# local/mesh/none pattern (see ckdMacMini) if/when it is, with whatever its
+# new meshnet IP turns out to be.
 Host openwebui
+    HostName 192.168.1.251
     User root
     Port 22
     IdentityFile ~/.ssh/id_ed25519_openwebui
     IdentitiesOnly yes
     HostKeyAlias openwebui
 
-Match originalhost openwebui exec "sh ~/dotfiles/bin/ssh-select-host local 192.168.1.251 100.118.101.97 22"
-    HostName 192.168.1.251
-
-Match originalhost openwebui exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.251 100.118.101.97 22"
-    HostName 100.118.101.97
+Match originalhost openwebui exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.251 home-mesh-jump 22"
+    ProxyJump home-mesh-jump
 
 Match originalhost openwebui exec "sh ~/dotfiles/bin/ssh-select-host none 192.168.1.251 100.118.101.97 22"
     HostName 192.168.1.251
