@@ -155,3 +155,12 @@ Host claude-code
 
 Match originalhost claude-code exec "sh ~/dotfiles/bin/ssh-select-host mesh 192.168.1.40 home-mesh-jump 22"
     ProxyJump home-mesh-jump
+
+# Server: Turris
+Host turris
+    HostName 192.168.2.1
+    User root
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_turris
+    IdentitiesOnly yes
+    HostKeyAlias turris

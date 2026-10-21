@@ -104,3 +104,11 @@ claudeRemote() {
     *)      ssh claude-code "$@" ;;
   esac
 }
+
+# Created by remoteConnect
+turris() {
+  case "${1:-}" in
+    tunnel) shift; remoteConnect tunnel turris "$@" ;;
+    *)      ssh turris "$@" ;;
+  esac
+}
