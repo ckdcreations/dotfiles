@@ -41,14 +41,22 @@ PROBE_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/ssh-select-host"
 cached_result() {
     cache_file="$PROBE_CACHE_DIR/$1"
     [ -f "$cache_file" ] || return 2
-    read -r cached_at cached_rc < "$cache_file" || return 2
+    cached_at='' cached_rc=''
+    read -r cached_at cached_rc < "$cache_file" 2>/dev/null || return 2
+    # Treat anything other than "<epoch> <0|1>" as a cache miss rather than
+    # feeding it to shell arithmetic, which aborts the script under set -u.
+    case "$cached_at" in ''|*[!0-9]*) return 2 ;; esac
+    case "$cached_rc" in 0|1) ;; *) return 2 ;; esac
     [ $(( $(date +%s) - cached_at )) -lt "$PROBE_CACHE_TTL" ] || return 2
     return "$cached_rc"
 }
 
 store_result() {
     mkdir -p "$PROBE_CACHE_DIR" 2>/dev/null || return 0
-    printf '%s %s\n' "$(date +%s)" "$2" > "$PROBE_CACHE_DIR/$1" 2>/dev/null || true
+    tmp_file="$PROBE_CACHE_DIR/.$1.$$"
+    if printf '%s %s\n' "$(date +%s)" "$2" > "$tmp_file" 2>/dev/null; then
+        mv -f "$tmp_file" "$PROBE_CACHE_DIR/$1" 2>/dev/null || rm -f "$tmp_file"
+    fi
 }
 
 is_ssh_reachable() {
