@@ -164,3 +164,12 @@ Host turris
     IdentityFile ~/.ssh/id_ed25519_turris
     IdentitiesOnly yes
     HostKeyAlias turris
+
+# Server: ckdcreationsmusic
+Host ckdcreationsmusic
+    HostName 192.168.2.156
+    User ckdcreationsmusic
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_ckdcreationsmusic
+    IdentitiesOnly yes
+    HostKeyAlias ckdcreationsmusic

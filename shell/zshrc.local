@@ -112,3 +112,11 @@ turris() {
     *)      ssh turris "$@" ;;
   esac
 }
+
+# Created by remoteConnect
+ckdcreationsmusic() {
+  case "${1:-}" in
+    tunnel) shift; remoteConnect tunnel ckdcreationsmusic "$@" ;;
+    *)      ssh ckdcreationsmusic "$@" ;;
+  esac
+}

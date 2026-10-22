@@ -19,7 +19,8 @@
         "ckdASUS": "linux",
         "Mingus": "linux",
         "proxmox": "linux",
-        "claude-code": "linux"
+        "claude-code": "linux",
+        "minecraft": "linux"
     },
     "git.autofetch": true,
     "remote.SSH.configFile": "/Users/ckdcreations/.ssh/config",
@@ -267,5 +268,6 @@
         "wix.vscode-import-cost",
         "yoavbls.pretty-ts-errors",
         "yzhang.markdown-all-in-one"
-    ]
+    ],
+    "claudeCode.hideOnboarding": true
 }
